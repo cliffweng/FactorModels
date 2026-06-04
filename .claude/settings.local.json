@@ -4,7 +4,9 @@
       "Bash(pip show:*)",
       "Bash(python -m venv .venv)",
       "Bash(.venv/Scripts/pip install:*)",
-      "Bash(.venv/Scripts/pytest tests/ -v)"
+      "Bash(.venv/Scripts/pytest tests/ -v)",
+      "Bash(.venv/Scripts/python -c ':*)",
+      "Bash(.venv/Scripts/pytest tests/ -v --tb=short)"
     ]
   }
 }

@@ -146,6 +146,13 @@ with st.spinner("Computing individual IC series..."):
             ic_series_map[name] = ic_s
 
 # ---------------------------------------------------------------------------
+# Apply pending weights from Optimizer tab BEFORE sliders are instantiated
+# ---------------------------------------------------------------------------
+if "pending_weights" in st.session_state:
+    for _name, _scaled_w in st.session_state.pop("pending_weights").items():
+        st.session_state[f"w_{_name}"] = _scaled_w
+
+# ---------------------------------------------------------------------------
 # Tab layout
 # ---------------------------------------------------------------------------
 tab_builder, tab_ic, tab_backtest, tab_optimizer = st.tabs([
@@ -549,12 +556,14 @@ with tab_optimizer:
                 st.markdown("---")
                 best_method = max(opt_results, key=lambda r: r.icir if not np.isnan(r.icir) else -999)
                 if st.button(f"Apply '{best_method.method}' weights to Model Builder"):
+                    # Store as pending — sliders are already instantiated this run,
+                    # so we cannot set their keys directly. On the next run the
+                    # pending_weights block at the top of this script applies them
+                    # before any slider is created.
+                    pending = {}
                     for name, w in best_method.weights.items():
-                        slider_key = f"w_{name}"
-                        if slider_key in st.session_state:
-                            # Scale to 0-2 range for the slider
-                            st.session_state[slider_key] = min(w * len(active_names), 2.0)
-                    st.success(f"Weights updated — switch to the **Model Builder** tab to see them.")
+                        pending[name] = min(w * len(active_names), 2.0)
+                    st.session_state["pending_weights"] = pending
                     st.rerun()
         else:
             st.info("Click **Run All Optimisers** to compute optimal weight allocations and the efficient frontier.")

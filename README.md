@@ -230,6 +230,128 @@ For factors where `direction = -1` (lower score is better, e.g. volatility), the
 
 ---
 
+## `compute()` and `compute_panel()` — how they relate to factor models
+
+### The core question: *when* are factor scores needed?
+
+A factor model answers: **which stocks should I own?** The answer depends on *when* you ask:
+
+- **Right now** → you want one cross-sectional snapshot. That's `compute()`.
+- **Every month for the past 3 years** → you want a time series of snapshots so you can measure predictive power and simulate trading. That's `compute_panel()`.
+
+### `compute()` — a single cross-section
+
+```python
+# src/factors/momentum.py
+def compute(self, prices: pd.DataFrame, **kwargs) -> pd.Series:
+    if len(prices) < self._LONG + 1:
+        return pd.Series(dtype=float)
+    end = prices.iloc[-self._SKIP]      # price 1 month ago
+    start = prices.iloc[-self._LONG]    # price 12 months ago
+    scores = end / start - 1
+    return scores.dropna()
+```
+
+**Input:** the full price history up to today.  
+**Output:** a single `pd.Series` — one float per ticker, the factor score as of the last row in `prices`.
+
+```
+AAPL    0.31
+MSFT    0.18
+NVDA    0.67
+...
+```
+
+This is the **cross-section** — a snapshot ranking of all stocks at one point in time. "NVDA has the highest 12-month momentum right now." It answers the portfolio construction question for today, and it's what the Factor Lab page shows.
+
+### `compute_panel()` — cross-sections over time
+
+```python
+# src/factors/momentum.py
+def compute_panel(self, prices: pd.DataFrame, freq: str = "ME", ...) -> pd.DataFrame:
+    p_end = prices.shift(self._SKIP)    # price as of 1-month-ago at each date
+    p_start = prices.shift(self._LONG)  # price as of 12-months-ago at each date
+    panel = p_end / p_start - 1
+    rebal = panel.resample(freq).last()
+    rebal = rebal[rebal.notna().any(axis=1).cumsum().gt(0)]
+    return rebal
+```
+
+**Input:** the same price history.  
+**Output:** a `pd.DataFrame` — rows are rebalance dates, columns are tickers.
+
+```
+            AAPL    MSFT    NVDA    ...
+2023-01-31  0.12    0.05    0.41
+2023-02-28  0.09    0.08    0.38
+2023-03-31  0.15    0.11    0.52
+...
+```
+
+Each row is exactly what `compute()` would have returned if you had called it on that date. The key difference is **efficiency**: rather than looping over 36 month-ends and calling `compute()` 36 times, `compute_panel()` does the whole calculation in one vectorised pass with `.shift()` and `.resample()` — no Python loop over dates.
+
+### Why the panel is what makes factor *research* possible
+
+`compute()` alone only tells you current scores. It can't tell you whether those scores actually predicted returns. For that you need the panel, because all the analysis functions in `src/analysis/` take a `(rebal_dates × tickers)` DataFrame:
+
+```
+compute_panel()  ──→  factor_panel (dates × tickers)
+                                │
+                ┌───────────────┼────────────────┐
+                ▼               ▼                ▼
+        compute_ic_series()  form_quantile_  run_backtest()
+        [ic.py]              portfolios()    [backtest.py]
+                             [quantile.py]
+```
+
+**IC analysis** (`ic.py`):
+```python
+def compute_ic_series(factor_panel, daily_returns, horizon_days=21):
+    fwd = compute_forward_returns(daily_returns, horizon_days)
+    for date in factor_panel.index:
+        scores = factor_panel.loc[date]      # one row = one compute() worth of scores
+        returns = fwd.loc[date]
+        IC[date] = spearmanr(scores, returns)
+```
+It iterates over rows of the panel, pairing each cross-sectional ranking with the forward returns that followed. The IC measures whether the ranking was right.
+
+**Quantile portfolios** (`quantile.py`):
+```python
+for entry_date in rebal_dates:
+    scores = factor_panel.loc[entry_date]    # one row at a time
+    # sort stocks into quintiles, hold until next rebal date
+```
+
+The panel is the bridge between a *definition* of how to score stocks and the *evidence* of whether scoring them that way was useful.
+
+### The fundamental vs price-based split
+
+This distinction drives the `requires_fundamentals` flag on `BaseFactor`:
+
+| | `compute()` | `compute_panel()` |
+|---|---|---|
+| **Price-based factors** (Momentum, Vol, Beta) | Uses the last rows of `prices` | Vectorised `.shift()` + `.resample()` — fast, no loops |
+| **Fundamental factors** (P/B, ROE) | Reads `yfinance.info` snapshot | **Raises `NotImplementedError`** |
+
+Fundamental data from `yfinance` is point-in-time only — there's no historical P/B series. So `PriceToBook.compute()` can tell you which stocks look cheap *today*, but you can't replay that ranking month-by-month. That's why the IC Analysis and Backtest pages gate on `requires_fundamentals` and only show a single-period IC for those factors.
+
+### Concrete data flow through the app
+
+```
+prices (dates × tickers)
+        │
+        ├── compute()        → pd.Series (tickers)     → Factor Lab bar chart
+        │                                                 Factor Lab scatter
+        │
+        └── compute_panel()  → pd.DataFrame             → IC Analysis
+                               (rebal_dates × tickers)  → Backtest
+                                                          → Multi-Factor Model
+```
+
+`CompositeModel` in `composite.py` follows the same contract: its `compute_scores()` mirrors `compute()` and its `compute_panel()` mirrors `compute_panel()`, so it slots into the same analysis pipeline without any code changes downstream.
+
+---
+
 ## Tests
 
 ```bash

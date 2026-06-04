@@ -9,8 +9,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 import src.factors  # noqa: register factors
 
-from src.data.loader import get_prices, get_fundamentals
-from src.data.universe import UNIVERSE, SECTOR_MAP, TICKER_SECTOR, BENCHMARK, get_download_tickers
+from src.data.loader import load_prices, get_fundamentals
+from src.data.universe import get_universe, get_sector_map, get_ticker_sector, BENCHMARK, get_download_tickers
+UNIVERSE = get_universe()
+SECTOR_MAP = get_sector_map()
+TICKER_SECTOR = get_ticker_sector()
 from src.viz.theme import apply_dark, SECTOR_COLORS
 from src.viz.factor_charts import plot_universe_correlation
 
@@ -47,12 +50,12 @@ download_tickers = tuple(sorted(set(filtered + [BENCHMARK])))
 # Load data (cached)
 # ---------------------------------------------------------------------------
 @st.cache_data(ttl=86_400, show_spinner="Loading price data...")
-def load_prices(tickers, start, end, _force=False):
-    return get_prices(tickers, start, end, force_refresh=_force)
+def load_prices_cached(tickers, start, end, _force=False):
+    return load_prices(tickers, start, end, force_refresh=_force)
 
 with st.spinner("Loading data..."):
     try:
-        prices = load_prices(download_tickers, start_date, end_date, _force=force_refresh)
+        prices = load_prices_cached(download_tickers, start_date, end_date, _force=force_refresh)
     except Exception as e:
         st.error(f"Failed to load price data: {e}")
         st.stop()

@@ -8,8 +8,9 @@ import streamlit as st
 import pandas as pd
 import src.factors  # noqa: register factors
 
-from src.data.loader import get_prices
-from src.data.universe import UNIVERSE, BENCHMARK
+from src.data.loader import load_prices
+from src.data.universe import get_universe, BENCHMARK
+UNIVERSE = get_universe()
 from src.factors.base import get_registry
 from src.analysis.quantile import form_quantile_portfolios
 from src.analysis.backtest import run_backtest
@@ -55,7 +56,7 @@ tickers = tuple(sorted(set(UNIVERSE + [BENCHMARK])))
 @st.cache_data(ttl=3600, show_spinner="Running backtest...")
 def run_bt(factor_name, tickers, start, end, n_quantiles, rebal_freq, tc_bps, direction, _force=False):
     from src.factors.base import get_factor
-    prices = get_prices(tickers, start, end, force_refresh=_force)
+    prices = load_prices(tickers, start, end, force_refresh=_force)
     stock_cols = [t for t in prices.columns if t != BENCHMARK]
     f = get_factor(factor_name)
 

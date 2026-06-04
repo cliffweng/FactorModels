@@ -71,3 +71,33 @@ def filter_by_sectors(sectors: list[str]) -> list[str]:
     for s in sectors:
         result.extend(SECTOR_MAP.get(s, []))
     return result
+
+
+# ---------------------------------------------------------------------------
+# Dynamic getters — merge base universe with user-added tickers
+# ---------------------------------------------------------------------------
+
+def get_universe() -> list[str]:
+    """Base universe + any user-added tickers (deduplicated, order preserved)."""
+    from src.data.custom_universe import load_custom
+    custom = [t for t in load_custom() if t not in UNIVERSE]
+    return UNIVERSE + custom
+
+
+def get_ticker_sector() -> dict[str, str]:
+    """Base ticker→sector map + user-added tickers (user entries win on conflict)."""
+    from src.data.custom_universe import load_custom
+    result = dict(TICKER_SECTOR)
+    result.update(load_custom())
+    return result
+
+
+def get_sector_map() -> dict[str, list[str]]:
+    """Base sector→tickers map extended with user-added tickers."""
+    from src.data.custom_universe import load_custom
+    result: dict[str, list[str]] = {k: list(v) for k, v in SECTOR_MAP.items()}
+    for ticker, sector in load_custom().items():
+        result.setdefault(sector, [])
+        if ticker not in result[sector]:
+            result[sector].append(ticker)
+    return result

@@ -10,8 +10,10 @@ import numpy as np
 import plotly.graph_objects as go
 import src.factors  # noqa: register factors
 
-from src.data.loader import get_prices, get_fundamentals
-from src.data.universe import UNIVERSE, BENCHMARK
+from src.data.loader import load_prices, get_fundamentals
+from src.data.universe import get_universe, get_ticker_sector, BENCHMARK
+UNIVERSE = get_universe()
+TICKER_SECTOR = get_ticker_sector()
 from src.factors.base import get_registry
 from src.viz.factor_charts import plot_correlation_matrix
 from src.viz.theme import apply_dark, SECTOR_COLORS
@@ -63,7 +65,7 @@ tickers = tuple(sorted(set(UNIVERSE + [BENCHMARK])))
 
 @st.cache_data(ttl=86_400, show_spinner="Loading prices...")
 def load_prices_cached(tickers, start, end, _force=False):
-    return get_prices(tickers, start, end, force_refresh=_force)
+    return load_prices(tickers, start, end, force_refresh=_force)
 
 with st.spinner("Loading data..."):
     try:
@@ -133,7 +135,6 @@ with tab2:
         col_x = st.selectbox("X-axis factor", factor_scores_df.columns.tolist(), index=0)
         col_y = st.selectbox("Y-axis factor", factor_scores_df.columns.tolist(), index=min(1, len(factor_scores_df.columns) - 1))
 
-        from src.data.universe import TICKER_SECTOR
         scatter_df = factor_scores_df[[col_x, col_y]].dropna()
         scatter_df["sector"] = scatter_df.index.map(lambda t: TICKER_SECTOR.get(t, "Unknown"))
 

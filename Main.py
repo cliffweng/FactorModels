@@ -138,6 +138,47 @@ with right:
 
 st.markdown("---")
 
+# ---------------------------------------------------------------------------
+# Custom Universe Management
+# ---------------------------------------------------------------------------
+from src.data.custom_universe import load_custom, add_ticker, remove_ticker, ALL_SECTORS
+
+st.subheader("Custom Universe")
+st.caption("Add any ticker to include it in all pages. Price cache is cleared on changes so new data downloads on next page visit.")
+
+custom = load_custom()
+
+add_col, _ = st.columns([2, 3])
+with add_col:
+    with st.form("add_ticker_form", clear_on_submit=True):
+        t_col, s_col, btn_col = st.columns([2, 2, 1])
+        new_ticker = t_col.text_input("Ticker", placeholder="e.g. PLTR").strip().upper()
+        new_sector = s_col.selectbox("Sector", ALL_SECTORS, index=ALL_SECTORS.index("Custom"))
+        submitted = btn_col.form_submit_button("Add", use_container_width=True)
+        if submitted and new_ticker:
+            add_ticker(new_ticker, new_sector)
+            clear_cache(prefix="get_prices_custom")   # force re-download to include new ticker
+            st.success(f"Added {new_ticker} ({new_sector})")
+            st.rerun()
+
+if custom:
+    rows = []
+    for ticker, sector in sorted(custom.items()):
+        rows.append({"Ticker": ticker, "Sector": sector})
+
+    import pandas as pd
+    st.dataframe(pd.DataFrame(rows), use_container_width=False, hide_index=True)
+
+    remove_ticker_choice = st.selectbox("Remove ticker", ["—"] + sorted(custom.keys()))
+    if st.button("Remove", disabled=(remove_ticker_choice == "—")):
+        remove_ticker(remove_ticker_choice)
+        clear_cache(prefix="get_prices_custom")
+        st.rerun()
+else:
+    st.info("No custom tickers yet.")
+
+st.markdown("---")
+
 # Cache status in sidebar
 with st.sidebar:
     st.markdown("### Cache Status")
@@ -152,16 +193,3 @@ with st.sidebar:
             st.rerun()
     else:
         st.info("No cached data yet. Visit a page to load data.")
-
-    st.markdown("---")
-    st.markdown(
-        """
-        **Navigation**
-        Use the pages in the left sidebar:
-        1. Universe Explorer
-        2. Factor Lab
-        3. IC Analysis
-        4. Backtest
-        5. Factor Correlation
-        """
-    )

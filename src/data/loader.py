@@ -13,18 +13,8 @@ from src.data.cache import cached
 # Price data
 # ---------------------------------------------------------------------------
 
-@cached(ttl_days=1.0)
-def get_prices(tickers: tuple[str, ...], start: str, end: str) -> pd.DataFrame:
-    """Download adjusted close prices. Returns DataFrame (dates × tickers).
-
-    Args:
-        tickers: sorted tuple of ticker symbols (tuple for cache-key stability)
-        start: YYYY-MM-DD
-        end:   YYYY-MM-DD
-
-    Returns:
-        DataFrame of adjusted close prices, columns = tickers, index = DatetimeIndex.
-    """
+def _download_prices(tickers: tuple[str, ...], start: str, end: str) -> pd.DataFrame:
+    """Raw yfinance download — not cached directly; called by the cached wrappers below."""
     logger.info(f"Downloading prices for {len(tickers)} tickers [{start} → {end}]")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -40,22 +30,78 @@ def get_prices(tickers: tuple[str, ...], start: str, end: str) -> pd.DataFrame:
     if raw.empty:
         raise ValueError("yfinance returned empty DataFrame — check tickers / date range.")
 
-    # Handle single vs multi-ticker downloads
     if isinstance(raw.columns, pd.MultiIndex):
         prices = raw["Close"].copy()
     else:
-        # Single ticker: columns are OHLCV field names
         prices = raw[["Close"]].copy()
         prices.columns = list(tickers)
 
     prices.index = pd.to_datetime(prices.index)
-    prices = prices.sort_index()
-
-    # Drop columns that are entirely NaN
-    prices = prices.dropna(axis=1, how="all")
-
+    prices = prices.sort_index().dropna(axis=1, how="all")
     logger.info(f"Prices loaded: {prices.shape[0]} dates × {prices.shape[1]} tickers")
     return prices
+
+
+@cached(ttl_days=1.0)
+def get_prices(tickers: tuple[str, ...], start: str, end: str) -> pd.DataFrame:
+    """Download adjusted close prices for the base universe.
+
+    Args:
+        tickers: sorted tuple of ticker symbols (tuple for cache-key stability)
+        start: YYYY-MM-DD
+        end:   YYYY-MM-DD
+
+    Returns:
+        DataFrame of adjusted close prices, columns = tickers, index = DatetimeIndex.
+    """
+    return _download_prices(tickers, start, end)
+
+
+@cached(ttl_days=1.0)
+def get_prices_custom(tickers: tuple[str, ...], start: str, end: str) -> pd.DataFrame:
+    """Download adjusted close prices for user-added tickers.
+
+    Stored under a separate cache prefix (``get_prices_custom_*.pkl``) so that
+    adding or removing custom tickers only busts this cache, leaving the base
+    universe cache intact.
+    """
+    return _download_prices(tickers, start, end)
+
+
+def load_prices(
+    tickers: tuple[str, ...],
+    start: str,
+    end: str,
+    force_refresh: bool = False,
+) -> pd.DataFrame:
+    """Load prices, routing base and custom tickers to separate cached calls.
+
+    Use this instead of ``get_prices`` in pages so that custom-ticker additions
+    never invalidate the base universe price cache.
+
+    Args:
+        tickers: full sorted tuple (base + custom + benchmark)
+        start / end: YYYY-MM-DD date range
+        force_refresh: bypass cache and re-download
+
+    Returns:
+        Merged DataFrame of adjusted close prices for all requested tickers.
+    """
+    from src.data.universe import UNIVERSE, BENCHMARK
+
+    base_set = set(UNIVERSE) | {BENCHMARK}
+    base    = tuple(t for t in tickers if t in base_set)
+    custom  = tuple(t for t in tickers if t not in base_set)
+
+    base_prices = get_prices(base, start, end, force_refresh=force_refresh) if base else pd.DataFrame()
+
+    if not custom:
+        return base_prices
+
+    custom_prices = get_prices_custom(custom, start, end, force_refresh=force_refresh)
+    merged = pd.concat([base_prices, custom_prices], axis=1)
+    merged.index = pd.to_datetime(merged.index)
+    return merged.sort_index()
 
 
 def get_returns(prices: pd.DataFrame) -> pd.DataFrame:

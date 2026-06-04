@@ -8,8 +8,10 @@ import streamlit as st
 import pandas as pd
 import src.factors  # noqa: register factors
 
-from src.data.loader import get_prices, get_fundamentals
-from src.data.universe import UNIVERSE, TICKER_SECTOR, BENCHMARK, get_download_tickers
+from src.data.loader import load_prices, get_fundamentals
+from src.data.universe import get_universe, get_ticker_sector, BENCHMARK, get_download_tickers
+UNIVERSE = get_universe()
+TICKER_SECTOR = get_ticker_sector()
 from src.factors.base import get_registry
 from src.analysis.ic import compute_forward_returns
 from src.viz.factor_charts import plot_factor_bar, plot_factor_scatter, plot_factor_distribution
@@ -57,7 +59,7 @@ tickers = tuple(sorted(set(UNIVERSE + [BENCHMARK])))
 
 @st.cache_data(ttl=86_400, show_spinner="Loading prices...")
 def load_prices_cached(tickers, start, end, _force=False):
-    return get_prices(tickers, start, end, force_refresh=_force)
+    return load_prices(tickers, start, end, force_refresh=_force)
 
 @st.cache_data(ttl=86_400, show_spinner="Loading fundamentals...")
 def load_fundamentals_cached(tickers, _force=False):

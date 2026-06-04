@@ -11,8 +11,10 @@ import pandas as pd
 import streamlit as st
 import src.factors  # noqa: register all factors
 
-from src.data.loader import get_prices, get_fundamentals
-from src.data.universe import UNIVERSE, BENCHMARK
+from src.data.loader import load_prices, get_fundamentals
+from src.data.universe import get_universe, get_ticker_sector, BENCHMARK
+UNIVERSE = get_universe()
+TICKER_SECTOR = get_ticker_sector()
 
 from src.factors.base import get_registry
 from src.factors.composite import CompositeModel
@@ -102,7 +104,7 @@ tickers = tuple(sorted(set(UNIVERSE + [BENCHMARK])))
 
 @st.cache_data(ttl=86_400, show_spinner="Loading prices...")
 def load_prices_cached(tickers, start, end, _force=False):
-    return get_prices(tickers, start, end, force_refresh=_force)
+    return load_prices(tickers, start, end, force_refresh=_force)
 
 with st.spinner("Loading price data..."):
     try:
@@ -247,7 +249,6 @@ with tab_builder:
     with c_left:
         if not composite_scores.empty:
             from src.viz.factor_charts import plot_factor_bar
-            from src.data.universe import TICKER_SECTOR
             fig_scores = plot_factor_bar(
                 composite_scores,
                 ticker_sector=TICKER_SECTOR,

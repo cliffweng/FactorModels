@@ -150,7 +150,7 @@ Every factor is a class that inherits `BaseFactor` and is decorated with `@regis
 # src/factors/my_factors.py
 from src.factors.base import BaseFactor, register_factor
 import pandas as pd
-
+333
 @register_factor
 class EarningsYield(BaseFactor):
     name        = "E_Y"

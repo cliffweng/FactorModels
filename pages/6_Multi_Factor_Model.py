@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 import src.factors  # noqa: register all factors
 
-from src.data.loader import get_prices
+from src.data.loader import get_prices, get_fundamentals
 from src.data.universe import UNIVERSE, BENCHMARK
 
 from src.factors.base import get_registry
@@ -21,6 +21,7 @@ from src.analysis.ic import compute_ic_series, compute_rolling_ic, compute_icir,
 from src.analysis.backtest import run_backtest
 from src.analysis.stats import summary_stats
 from src.analysis import optimizer as opt
+from src.analysis.strategy_store import list_strategies, save_strategy, delete_strategy
 
 from src.viz.multi_factor_charts import (
     plot_weight_comparison, plot_weights_radar,
@@ -37,11 +38,19 @@ st.title("Multi-Factor Model")
 st.caption("Combine multiple factors into a composite signal, evaluate IC, and optimise weights")
 
 # ---------------------------------------------------------------------------
-# Registry — only price-based factors support panel computation
+# Registry
 # ---------------------------------------------------------------------------
 registry = get_registry()
-price_factors = [(name, f) for name, f in registry.items() if not f.requires_fundamentals]
-price_factor_labels = {f.label: name for name, f in price_factors}
+# All registered factors (for multiselect)
+all_factor_labels   = {f.label: name for name, f in registry.items()}
+# Price-based only (used for defaults)
+price_factor_labels = {f.label: name for name, f in registry.items() if not f.requires_fundamentals}
+
+# ---------------------------------------------------------------------------
+# Apply pending factor selection from Strategies tab BEFORE sidebar renders
+# ---------------------------------------------------------------------------
+if "pending_sidebar_factors" in st.session_state:
+    st.session_state["sel_factors"] = st.session_state.pop("pending_sidebar_factors")
 
 # ---------------------------------------------------------------------------
 # Sidebar — factor selection and global settings
@@ -51,9 +60,10 @@ with st.sidebar:
 
     selected_labels = st.multiselect(
         "Factors",
-        options=list(price_factor_labels.keys()),
+        options=sorted(all_factor_labels.keys()),
         default=list(price_factor_labels.keys())[:3],
-        help="Select ≥ 2 price-based factors to build a composite model",
+        help="All 10 factors available. Fundamental factors (P/B, ROE, etc.) appear in cross-section scores but are excluded from IC / Backtest / Optimizer.",
+        key="sel_factors",
     )
 
     rebal_freq = st.selectbox(
@@ -71,13 +81,16 @@ with st.sidebar:
     force_refresh = st.button("Refresh Data")
 
     st.markdown("---")
-    st.caption("Fundamental factors (P/B, ROE, etc.) are excluded — they don't support rolling panels.")
+    st.caption(
+        "Fundamental factors (P/B, ROE, etc.) contribute to cross-section scores "
+        "but are excluded from IC / Backtest / Optimizer (no historical panel data)."
+    )
 
 if len(selected_labels) < 2:
     st.warning("Select at least 2 factors to build a composite model.")
     st.stop()
 
-selected_names = [price_factor_labels[lbl] for lbl in selected_labels]
+selected_names = [all_factor_labels[lbl] for lbl in selected_labels]
 selected_factors = [registry[n] for n in selected_names]
 
 # ---------------------------------------------------------------------------
@@ -118,6 +131,8 @@ def compute_factor_ic_series(factor_name, _panel, _returns, horizon):
 with st.spinner("Computing factor panels..."):
     factor_panels: dict[str, pd.DataFrame] = {}
     for name in selected_names:
+        if registry[name].requires_fundamentals:
+            continue   # snapshot-only; contributes to scores but not panels
         try:
             panel = compute_factor_panel(
                 name, tuple(stock_cols), start_date, end_date,
@@ -132,10 +147,19 @@ if not factor_panels:
     st.error("No factor panels could be computed. Try a different factor selection or longer history.")
     st.stop()
 
-# Only keep factors whose panels succeeded
-active_names = list(factor_panels.keys())
+# Price-based factors with successful panel computation
+active_names   = list(factor_panels.keys())
 active_factors = [registry[n] for n in active_names]
-active_labels = {n: registry[n].label for n in active_names}
+active_labels  = {n: registry[n].label for n in active_names}
+
+# Fundamental (snapshot-only) factors among the user's selection
+fundamental_names = [n for n in selected_names if registry[n].requires_fundamentals]
+
+# Combined ordered list: price-based first, then fundamental
+# (slider keys follow this order so pending_weights applies correctly)
+all_selected_names   = active_names + fundamental_names
+all_selected_factors = [registry[n] for n in all_selected_names]
+all_selected_labels  = {n: registry[n].label for n in all_selected_names}
 
 with st.spinner("Computing individual IC series..."):
     ic_series_map: dict[str, pd.Series] = {}
@@ -144,6 +168,19 @@ with st.spinner("Computing individual IC series..."):
         ic_s = compute_factor_ic_series(name, panel, daily_returns_stocks, ic_horizon)
         if len(ic_s) >= 3:
             ic_series_map[name] = ic_s
+
+# Load fundamentals if the user selected any fundamental factors
+@st.cache_data(ttl=86_400, show_spinner="Loading fundamental data...")
+def _load_fundamentals(tickers, _force=False):
+    return get_fundamentals(tickers, force_refresh=_force)
+
+fundamentals = None
+if fundamental_names:
+    try:
+        with st.spinner("Loading fundamental data..."):
+            fundamentals = _load_fundamentals(tuple(sorted(UNIVERSE)), _force=force_refresh)
+    except Exception:
+        fundamentals = None
 
 # ---------------------------------------------------------------------------
 # Apply pending weights from Optimizer tab BEFORE sliders are instantiated
@@ -155,8 +192,8 @@ if "pending_weights" in st.session_state:
 # ---------------------------------------------------------------------------
 # Tab layout
 # ---------------------------------------------------------------------------
-tab_builder, tab_ic, tab_backtest, tab_optimizer = st.tabs([
-    "Model Builder", "IC Analysis", "Backtest", "Optimizer",
+tab_builder, tab_ic, tab_backtest, tab_optimizer, tab_strategies = st.tabs([
+    "Model Builder", "IC Analysis", "Backtest", "Optimizer", "Strategies",
 ])
 
 # ===========================================================================
@@ -166,36 +203,44 @@ with tab_builder:
     st.subheader("Weight Configuration")
     st.caption("Set raw weights for each factor. Weights are normalised to sum to 1.")
 
-    # Weight sliders — one per active factor
-    weight_cols = st.columns(min(len(active_names), 4))
+    # Weight sliders — one per selected factor (price-based + fundamental)
+    weight_cols = st.columns(min(len(all_selected_names), 4))
     raw_weights: list[float] = []
-    for i, name in enumerate(active_names):
+    for i, name in enumerate(all_selected_names):
         col = weight_cols[i % len(weight_cols)]
         with col:
-            label = active_labels[name]
-            direction_note = "(−)" if registry[name].direction == -1 else "(+)"
+            f_obj = registry[name]
+            label = all_selected_labels[name]
+            direction_note = "(−)" if f_obj.direction == -1 else "(+)"
+            snap_note = " ★" if f_obj.requires_fundamentals else ""
             w = st.slider(
-                f"{label} {direction_note}",
+                f"{label}{snap_note} {direction_note}",
                 min_value=0.0, max_value=2.0, value=1.0, step=0.05,
                 key=f"w_{name}",
-                help=f"{registry[name].description}  Direction automatically applied.",
+                help=f"{f_obj.description}  Direction automatically applied."
+                     + (" ★ Snapshot-only — excluded from IC/Backtest/Optimizer."
+                        if f_obj.requires_fundamentals else ""),
             )
             raw_weights.append(w)
 
-    # Build composite
-    model = CompositeModel(active_factors, raw_weights, name="Composite")
+    if fundamental_names:
+        st.caption("★ Snapshot-only factors contribute to the cross-section scores below but are excluded from IC Analysis, Backtest, and Optimizer.")
+
+    # Build composite — all selected factors
+    model = CompositeModel(all_selected_factors, raw_weights, name="Composite")
 
     # Show normalised weight summary
     nw = model.weights_dict()
     st.markdown(
-        " · ".join(f"**{active_labels[n]}**: {nw[n]:.1%}" for n in active_names
+        " · ".join(f"**{all_selected_labels[n]}**: {nw[n]:.1%}" for n in all_selected_names
                    if abs(nw.get(n, 0)) > 1e-9)
     )
     st.markdown("---")
 
-    # Composite cross-section scores
-    composite_scores = model.compute_scores(prices_stocks)
-    contrib_df = model.factor_contributions(prices_stocks)
+    # Composite cross-section scores (fundamental factors included when loaded)
+    _score_kwargs = {"fundamentals": fundamentals} if fundamentals is not None else {}
+    composite_scores = model.compute_scores(prices_stocks, **_score_kwargs)
+    contrib_df = model.factor_contributions(prices_stocks, **_score_kwargs)
 
     c_left, c_right = st.columns(2)
 
@@ -228,10 +273,40 @@ with tab_builder:
         radar_col, spacer = st.columns([1, 1])
         with radar_col:
             fig_radar = plot_weights_radar(
-                {active_labels[n]: v for n, v in nw.items()},
+                {all_selected_labels.get(n, n): v for n, v in nw.items()},
                 title="Weight Allocation",
             )
             st.plotly_chart(fig_radar, use_container_width=True)
+
+    # ------------------------------------------------------------------
+    # Save as Strategy
+    # ------------------------------------------------------------------
+    st.markdown("---")
+    st.subheader("Save as Strategy")
+    st.caption(
+        "Snapshot the current factor selection and weights as a named strategy. "
+        "Saved strategies can be compared side-by-side in the **Strategies** tab."
+    )
+    save_col, name_col = st.columns([2, 3])
+    with name_col:
+        strategy_name = st.text_input(
+            "Strategy name",
+            value="My Strategy",
+            key="strategy_name_input",
+            label_visibility="collapsed",
+            placeholder="Strategy name…",
+        )
+    with save_col:
+        if st.button("Save Strategy", type="primary"):
+            if strategy_name.strip():
+                save_strategy(
+                    name=strategy_name.strip(),
+                    factors={n: float(raw_weights[i]) for i, n in enumerate(all_selected_names)},
+                    rebal_freq=rebal_freq,
+                )
+                st.success(f"Strategy **{strategy_name.strip()}** saved. View it in the **Strategies** tab.")
+            else:
+                st.warning("Enter a name before saving.")
 
 # ===========================================================================
 # TAB 2 — IC ANALYSIS
@@ -260,9 +335,10 @@ with tab_ic:
             ic_s = compute_ic_series(panel, dr, horizon_days=horizon)
             return panel, ic_s
 
+        # Use all selected names — CompositeModel.compute_panel() skips fundamental factors internally
         w_tuple = tuple(raw_weights)
         composite_panel, composite_ic = get_composite_panel_and_ic(
-            tuple(active_names), w_tuple, start_date, end_date,
+            tuple(all_selected_names), w_tuple, start_date, end_date,
             rebal_freq, ic_horizon, prices_stocks,
         )
 
@@ -373,9 +449,9 @@ with tab_backtest:
             except Exception:
                 pass
 
-        # Composite backtest
+        # Composite backtest — fundamental factors skipped internally by CompositeModel
         bt_composite = run_composite_backtest(
-            tuple(active_names), w_tuple, prices_stocks, daily_returns, rebal_freq,
+            tuple(all_selected_names), w_tuple, prices_stocks, daily_returns, rebal_freq,
         )
         if bt_composite is not None:
             cum_comp = bt_composite.cumulative_ls
@@ -567,3 +643,185 @@ with tab_optimizer:
                     st.rerun()
         else:
             st.info("Click **Run All Optimisers** to compute optimal weight allocations and the efficient frontier.")
+
+# ===========================================================================
+# TAB 5 — STRATEGIES
+# ===========================================================================
+with tab_strategies:
+    all_strategies = list_strategies()
+
+    if not all_strategies:
+        st.info(
+            "No strategies saved yet. Configure a model in the **Model Builder** tab "
+            "and click **Save Strategy**."
+        )
+    else:
+        # ----------------------------------------------------------------
+        # Strategy cards
+        # ----------------------------------------------------------------
+        st.subheader("Saved Strategies")
+        st.caption("Select strategies to compare, load them into the Model Builder, or delete them.")
+
+        selected_strategy_names: list[str] = []
+
+        for strat in all_strategies:
+            with st.container(border=True):
+                h_col, check_col = st.columns([5, 1])
+                with h_col:
+                    st.markdown(f"#### {strat['name']}")
+                    st.caption(
+                        f"Rebalance: **{strat['rebal_freq']}** · "
+                        f"Saved: {strat['created_at'][:10]}"
+                    )
+                    # Factor weight pills
+                    factor_total = sum(strat["factors"].values())
+                    pills = []
+                    for fn, fw in strat["factors"].items():
+                        pct = fw / factor_total if factor_total > 1e-12 else 0
+                        label = active_labels.get(fn, fn)
+                        pills.append(f"**{label}** {pct:.0%}")
+                    st.markdown("  ·  ".join(pills))
+                with check_col:
+                    selected = st.checkbox(
+                        "Compare",
+                        key=f"cmp_{strat['name']}",
+                        value=False,
+                    )
+                    if selected:
+                        selected_strategy_names.append(strat["name"])
+
+                btn_load, btn_delete, _ = st.columns([1, 1, 4])
+                with btn_load:
+                    if st.button("Load into Builder", key=f"load_{strat['name']}"):
+                        # Convert strategy factors to labels the sidebar multiselect understands
+                        strat_factor_names = list(strat["factors"].keys())
+                        strat_labels = [
+                            registry[n].label
+                            for n in strat_factor_names
+                            if n in registry and n in price_factor_labels.values()
+                        ]
+                        if strat_labels:
+                            st.session_state["pending_sidebar_factors"] = strat_labels
+                        # Set weights — will be consumed by pending_weights block on next run
+                        pending = {}
+                        total_w = sum(strat["factors"].values())
+                        n_factors = len(strat_factor_names)
+                        for fn, fw in strat["factors"].items():
+                            pending[fn] = min((fw / total_w if total_w > 1e-12 else 1.0 / n_factors) * n_factors, 2.0)
+                        st.session_state["pending_weights"] = pending
+                        st.rerun()
+                with btn_delete:
+                    if st.button("Delete", key=f"del_{strat['name']}"):
+                        delete_strategy(strat["name"])
+                        st.rerun()
+
+        # ----------------------------------------------------------------
+        # Comparison section
+        # ----------------------------------------------------------------
+        st.markdown("---")
+        st.subheader("Strategy Comparison")
+
+        compare_strategies = [s for s in all_strategies if s["name"] in selected_strategy_names]
+
+        if len(compare_strategies) < 1:
+            st.info("Tick **Compare** on one or more strategies above to visualise them together.")
+        else:
+            @st.cache_data(ttl=3600, show_spinner=False)
+            def _strategy_backtest(strat_name, factor_names_tuple, weights_tuple, freq,
+                                   _prices, _daily_returns):
+                m = CompositeModel(
+                    [registry[n] for n in factor_names_tuple if n in registry],
+                    list(weights_tuple),
+                )
+                try:
+                    panel = m.compute_panel(_prices, freq=freq)
+                except Exception:
+                    return None
+                if panel.empty:
+                    return None
+                return run_backtest(panel, _daily_returns, direction=1)
+
+            @st.cache_data(ttl=3600, show_spinner=False)
+            def _strategy_ic(strat_name, factor_names_tuple, weights_tuple, freq,
+                             horizon, _prices, _daily_returns):
+                m = CompositeModel(
+                    [registry[n] for n in factor_names_tuple if n in registry],
+                    list(weights_tuple),
+                )
+                try:
+                    panel = m.compute_panel(_prices, freq=freq)
+                except Exception:
+                    return pd.Series(dtype=float)
+                if panel.empty:
+                    return pd.Series(dtype=float)
+                return compute_ic_series(panel, _daily_returns, horizon_days=horizon)
+
+            with st.spinner("Running strategy comparisons..."):
+                cmp_cumulative: dict[str, pd.Series] = {}
+                cmp_ic: dict[str, pd.Series] = {}
+                cmp_stats: list[dict] = []
+                spy_cum_cmp = None
+
+                for strat in compare_strategies:
+                    fn_tuple = tuple(n for n in strat["factors"] if n in registry)
+                    if not fn_tuple:
+                        continue
+                    total_w = sum(strat["factors"].get(n, 0) for n in fn_tuple)
+                    w_tuple_cmp = tuple(
+                        strat["factors"].get(n, 0) / total_w if total_w > 1e-12 else 1.0 / len(fn_tuple)
+                        for n in fn_tuple
+                    )
+                    freq_cmp = strat.get("rebal_freq", "ME")
+
+                    bt = _strategy_backtest(
+                        strat["name"], fn_tuple, w_tuple_cmp, freq_cmp,
+                        prices_stocks, daily_returns,
+                    )
+                    if bt is not None and len(bt.cumulative_ls) > 0:
+                        cmp_cumulative[strat["name"]] = bt.cumulative_ls
+                        row = summary_stats(bt.ls_returns, strat["name"])
+                        cmp_stats.append(row)
+                        if spy_cum_cmp is None and len(bt.cumulative_benchmark) > 0:
+                            spy_cum_cmp = bt.cumulative_benchmark
+
+                    ic_s = _strategy_ic(
+                        strat["name"], fn_tuple, w_tuple_cmp, freq_cmp,
+                        ic_horizon, prices_stocks, daily_returns_stocks,
+                    )
+                    if len(ic_s) >= 3:
+                        cmp_ic[strat["name"]] = ic_s
+
+            if cmp_cumulative:
+                fig_cmp = plot_backtest_overlay(
+                    cmp_cumulative,
+                    benchmark=spy_cum_cmp,
+                    highlight=None,
+                    title="Long-Short Cumulative Returns — Strategy Comparison",
+                )
+                st.plotly_chart(fig_cmp, use_container_width=True)
+
+            if cmp_stats:
+                st.markdown("---")
+                st.subheader("Performance Statistics")
+                cmp_stats_df = pd.DataFrame(cmp_stats).set_index("Name")
+                st.dataframe(cmp_stats_df, use_container_width=True)
+
+            if cmp_ic:
+                st.markdown("---")
+                st.subheader("IC Comparison")
+                fig_ic_cmp = plot_ic_comparison(
+                    cmp_ic,
+                    composite_ic=None,
+                    title=f"3-Period Rolling IC — Strategy Comparison ({ic_horizon}d horizon)",
+                )
+                st.plotly_chart(fig_ic_cmp, use_container_width=True)
+
+                ic_summary_cmp = [
+                    {"name": name, "IC_mean": s.mean(), "ICIR": compute_icir(s)}
+                    for name, s in cmp_ic.items()
+                ]
+                fig_ic_sum_cmp = plot_ic_summary_bars(
+                    ic_summary_cmp,
+                    title="Mean IC and ICIR — Strategy Comparison",
+                )
+                st.plotly_chart(fig_ic_sum_cmp, use_container_width=True)

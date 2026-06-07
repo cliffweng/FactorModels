@@ -10,7 +10,8 @@ import src.factors  # noqa: register factors
 
 from src.data.loader import load_prices
 from src.data.universe import get_universe, BENCHMARK
-UNIVERSE = get_universe()
+UNIVERSE = st.session_state.get("filtered_universe") or get_universe()
+st.session_state["_ue_page_run"] = 0
 from src.factors.base import get_registry
 from src.analysis.quantile import form_quantile_portfolios
 from src.analysis.backtest import run_backtest
@@ -42,6 +43,12 @@ with st.sidebar:
     lookback_years = st.slider("Backtest Period (years)", 1, 5, 3)
     force_refresh = st.button("Refresh Data")
 
+    st.markdown("---")
+    _sectors = st.session_state.get("selected_sectors") or st.session_state.get("_sectors_shadow")
+    st.caption(
+        f"Universe: {', '.join(_sectors)} ({len(UNIVERSE)} tickers)"
+        if _sectors else f"Universe: all sectors ({len(UNIVERSE)} tickers)"
+    )
     st.markdown("---")
     st.caption(f"Direction: {'Higher score → Long leg' if factor.direction == 1 else 'Lower score → Long leg'}")
     st.caption(f"Description: {factor.description}")

@@ -60,6 +60,7 @@ class BaseFactor(ABC):
     category: str
     direction: int = 1
     requires_fundamentals: bool = False
+    requires_edgar: bool = False        # True → needs EDGAR historical data for compute_panel()
 
     @abstractmethod
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.Series:
@@ -79,6 +80,7 @@ class BaseFactor(ABC):
         prices: pd.DataFrame,
         freq: str = "ME",
         min_periods: int = 252,
+        **kwargs,
     ) -> pd.DataFrame:
         """Rolling panel of factor scores (dates × tickers).
 

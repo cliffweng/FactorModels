@@ -121,14 +121,19 @@ class CompositeModel:
         prices: pd.DataFrame,
         freq: str = "ME",
         min_periods: int = 252,
+        **kwargs,
     ) -> pd.DataFrame:
         """Rolling panel of composite scores (rebal_dates × tickers).
 
-        Only price-based factors (requires_fundamentals=False) are included.
-        Raises ValueError if none of the selected factors support panel computation.
+        Price-based factors are always included. FMP-backed factors (requires_edgar=True)
+        are included when ``fmp_panel`` is present in kwargs; otherwise skipped.
+        Factors with requires_fundamentals=True (yfinance snapshot only) are always skipped.
+
+        Raises ValueError if no factors support panel computation.
         """
         weights = self.normalized_weights
         z_panels: list[tuple[pd.DataFrame, float]] = []
+        has_fmp = "edgar_panel" in kwargs and kwargs["edgar_panel"]
 
         unsupported = []
         for factor, w in zip(self.factors, weights):
@@ -137,8 +142,11 @@ class CompositeModel:
             if factor.requires_fundamentals:
                 unsupported.append(factor.label)
                 continue
+            if getattr(factor, "requires_edgar", False) and not has_fmp:
+                unsupported.append(factor.label)
+                continue
             try:
-                panel = factor.compute_panel(prices, freq=freq, min_periods=min_periods)
+                panel = factor.compute_panel(prices, freq=freq, min_periods=min_periods, **kwargs)
             except Exception:
                 unsupported.append(factor.label)
                 continue

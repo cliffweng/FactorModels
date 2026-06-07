@@ -28,6 +28,7 @@ def test_factor_attributes():
         assert hasattr(factor, "category"), f"{name} missing 'category'"
         assert factor.direction in (1, -1), f"{name}: direction must be ±1"
         assert isinstance(factor.requires_fundamentals, bool)
+        assert isinstance(getattr(factor, "requires_edgar", False), bool)
 
 
 # ---------------------------------------------------------------------------
@@ -194,12 +195,13 @@ class TestPriceToBook:
         scores = f.compute(prices)
         assert scores.empty
 
-    def test_no_panel(self):
+    def test_no_panel_without_edgar(self):
         from src.factors.value import PriceToBook
         prices = make_prices(5, 300)
         f = PriceToBook()
-        with pytest.raises(NotImplementedError):
-            f.compute_panel(prices)
+        # Without edgar_panel kwarg, compute_panel returns empty DataFrame (graceful)
+        result = f.compute_panel(prices)
+        assert result.empty
 
 
 # ---------------------------------------------------------------------------

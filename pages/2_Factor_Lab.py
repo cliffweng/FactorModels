@@ -9,9 +9,10 @@ import pandas as pd
 import src.factors  # noqa: register factors
 
 from src.data.loader import load_prices, get_fundamentals
-from src.data.universe import get_universe, get_ticker_sector, BENCHMARK, get_download_tickers
-UNIVERSE = get_universe()
+from src.data.universe import get_universe, get_ticker_sector, get_sector_map, BENCHMARK, get_download_tickers
+UNIVERSE      = st.session_state.get("filtered_universe") or get_universe()
 TICKER_SECTOR = get_ticker_sector()
+st.session_state["_ue_page_run"] = 0  # reset so Universe Explorer reloads saved sectors on next entry
 from src.factors.base import get_registry
 from src.analysis.ic import compute_forward_returns
 from src.viz.factor_charts import plot_factor_bar, plot_factor_scatter, plot_factor_distribution
@@ -43,6 +44,12 @@ with st.sidebar:
     )
     force_refresh = st.button("Refresh Data")
 
+    st.markdown("---")
+    _sectors = st.session_state.get("selected_sectors") or st.session_state.get("_sectors_shadow")
+    if _sectors and len(_sectors) < len(list(get_sector_map())):
+        st.caption(f"Universe filtered to: {', '.join(_sectors)}")
+    else:
+        st.caption(f"Universe: all sectors ({len(UNIVERSE)} tickers)")
     st.markdown("---")
     st.markdown(f"**Category:** {factor.category}")
     st.markdown(f"**Direction:** {'Higher is better' if factor.direction == 1 else 'Lower is better'}")

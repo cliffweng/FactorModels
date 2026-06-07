@@ -15,7 +15,11 @@
       "Bash(grep -n \"UNIVERSE\\\\|TICKER_SECTOR\\\\|SECTOR_MAP\\\\|get_download_tickers\\\\|filter_by_sectors\" C:/dev/finance/FactorModels/pages/*.py C:/dev/finance/FactorModels/src/data/loader.py)",
       "Bash(sed -i 's/from src\\\\.data\\\\.loader import get_prices, get_fundamentals/from src.data.loader import load_prices, get_fundamentals/g' pages/1_Universe_Explorer.py pages/2_Factor_Lab.py pages/5_Factor_Correlation.py pages/6_Multi_Factor_Model.py)",
       "Bash(sed -i 's/from src\\\\.data\\\\.loader import get_prices$/from src.data.loader import load_prices/g' pages/3_IC_Analysis.py pages/4_Backtest.py pages/7_Signal_Lab.py)",
-      "Bash(grep -n \"load_prices\\\\|get_prices\" pages/*.py)"
+      "Bash(grep -n \"load_prices\\\\|get_prices\" pages/*.py)",
+      "Bash(Get-ChildItem -Recurse \"C:/dev/finance/FactorModels/src/analysis/__pycache__\" -Filter \"optimizer*.pyc\")",
+      "Bash(Remove-Item -Force)",
+      "Bash(Write-Host \"cleared\")",
+      "Bash(Remove-Item src/data/fmp.py)"
     ]
   }
 }

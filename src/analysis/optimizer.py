@@ -192,14 +192,95 @@ def min_variance(ic_dict: dict[str, pd.Series]) -> OptimizeResult:
     return _make_result("Min Variance", w, mu, Sigma, names)
 
 
-def run_all(ic_dict: dict[str, pd.Series]) -> list[OptimizeResult]:
-    """Run all five methods and return their results."""
+def risk_parity(ic_dict: dict[str, pd.Series]) -> OptimizeResult:
+    """Equal IC-risk contribution from each factor.
+
+    Finds weights such that each factor contributes the same share of total
+    portfolio IC variance: w_i·(Σw)_i  =  w'Σw / N  for all i.
+    """
+    mu, Sigma, names = _align(ic_dict)
+    n = len(names)
+
+    if n == 1:
+        return _make_result("Risk Parity", np.array([1.0]), mu, Sigma, names)
+
+    def risk_contrib_sse(w: np.ndarray) -> float:
+        port_var = float(w @ Sigma @ w)
+        if port_var < 1e-16:
+            return 0.0
+        rc = w * (Sigma @ w)
+        target = port_var / n
+        return float(np.sum((rc - target) ** 2))
+
+    constraints = [{"type": "eq", "fun": lambda w: w.sum() - 1.0}]
+    bounds = [(1e-4, 1.0)] * n   # small lower bound keeps every factor in
+
+    best_res, best_val = None, np.inf
+    for seed in [_equal_w(names)] + [np.eye(n)[i] for i in range(n)]:
+        res = minimize(
+            risk_contrib_sse, seed, method="SLSQP",
+            bounds=bounds, constraints=constraints,
+            options={"ftol": 1e-12, "maxiter": 1000},
+        )
+        if res.fun < best_val:
+            best_val, best_res = res.fun, res
+
+    if best_res is None:
+        return equal_weight(ic_dict)
+    w = np.maximum(best_res.x, 0.0)
+    w /= w.sum() if w.sum() > 1e-12 else 1.0
+    return _make_result("Risk Parity", w, mu, Sigma, names)
+
+
+def mean_variance(ic_dict: dict[str, pd.Series], risk_aversion: float = 1.0) -> OptimizeResult:
+    """Mean-variance optimal portfolio: maximise  μ'w − λ·w'Σw.
+
+    Args:
+        risk_aversion: λ — trade-off coefficient.
+            λ → 0:   pure IC maximiser (all weight on highest-IC factor).
+            λ → ∞:   pure variance minimiser (approaches min-variance portfolio).
+    """
+    mu, Sigma, names = _align(ic_dict)
+    n = len(names)
+
+    if n == 1:
+        return _make_result(f"Mean-Variance (λ={risk_aversion:.1f})", np.array([1.0]), mu, Sigma, names)
+
+    def neg_utility(w: np.ndarray) -> float:
+        return -(float(mu @ w) - risk_aversion * float(w @ Sigma @ w))
+
+    constraints = [{"type": "eq", "fun": lambda w: w.sum() - 1.0}]
+    bounds = [(0.0, 1.0)] * n
+
+    best_res, best_val = None, np.inf
+    for seed in [_equal_w(names)] + [np.eye(n)[i] for i in range(n)]:
+        res = minimize(
+            neg_utility, seed, method="SLSQP",
+            bounds=bounds, constraints=constraints,
+            options={"ftol": 1e-10, "maxiter": 1000},
+        )
+        if res.success and res.fun < best_val:
+            best_val, best_res = res.fun, res
+
+    if best_res is None or not best_res.success:
+        return equal_weight(ic_dict)
+    w = np.maximum(best_res.x, 0.0)
+    w /= w.sum() if w.sum() > 1e-12 else 1.0
+    return _make_result(f"Mean-Variance (λ={risk_aversion:.1f})", w, mu, Sigma, names)
+
+
+def run_all(ic_dict: dict[str, pd.Series], risk_aversion: float = 1.0) -> list[OptimizeResult]:
+    """Run all optimisers and return their results."""
     results = []
-    for fn in [equal_weight, ic_proportional, icir_proportional, max_icir, min_variance]:
+    for fn in [equal_weight, ic_proportional, icir_proportional, max_icir, min_variance, risk_parity]:
         try:
             results.append(fn(ic_dict))
         except Exception:
             pass
+    try:
+        results.append(mean_variance(ic_dict, risk_aversion=risk_aversion))
+    except Exception:
+        pass
     return results
 
 

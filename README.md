@@ -368,3 +368,34 @@ prices (dates × tickers)
 - Quantile portfolio monotonicity: synthetic signal where Q5 must outperform Q1
 
 All tests use synthetic price data generated in `tests/helpers.py` — no network calls.
+
+
+  ┌──────────────────────────┬─────────────────────────┬─────────────────────────────────┬──────────────────────────┬─────────────────────────────────┐
+  │          Source          │       Historical?       │      Pre-computed ratios?       │        Free tier         │              Notes              │
+  ├──────────────────────────┼─────────────────────────┼─────────────────────────────────┼──────────────────────────┼─────────────────────────────────┤
+  │ Financial Modeling Prep  │ Yes, quarterly back to  │ Yes (P/B, P/E, ROE, margins)    │ 250 req/day              │ Simplest drop-in; API key       │
+  │ (FMP)                    │ ~2005                   │                                 │                          │ required                        │
+  ├──────────────────────────┼─────────────────────────┼─────────────────────────────────┼──────────────────────────┼─────────────────────────────────┤
+  │ Simfin                   │ Yes, quarterly          │ Raw statements only (compute    │ Unlimited for            │ Python SDK; designed for quant  │
+  │                          │                         │ yourself)                       │ non-commercial           │ research                        │
+  ├──────────────────────────┼─────────────────────────┼─────────────────────────────────┼──────────────────────────┼─────────────────────────────────┤
+  │ SEC EDGAR (XBRL)         │ Yes, all filings since  │ Raw statements only             │ Completely free, no      │ Official source; more parsing   │
+  │                          │ ~2009                   │                                 │ limits                   │ work                            │
+  ├──────────────────────────┼─────────────────────────┼─────────────────────────────────┼──────────────────────────┼─────────────────────────────────┤
+  │ Polygon.io               │ Yes, quarterly          │ Raw statements                  │ 5 req/min free           │ Clean REST API                  │
+  └──────────────────────────┴─────────────────────────┴─────────────────────────────────┴──────────────────────────┴─────────────────────────────────┘
+
+  My recommendation: FMP for ease, EDGAR for purity.
+
+  - FMP gives you historical priceToBookRatio, returnOnEquity, grossProfitMargin, etc. already computed per quarter — a near-direct replacement for what
+  yfinance.info returns, but time-series. One API call per ticker returns all quarters.
+  - SEC EDGAR is free with no rate limits and is the ultimate source of truth, but you'd need to compute ratios from raw income statement + balance sheet
+  data (doable, just more code).
+
+  The point-in-time safety question — FMP and EDGAR both report by filing date, not period end date, which is the right thing to do for factor research
+  (avoids look-ahead bias). Simfin also handles this.
+
+  Which direction interests you?
+  - FMP — fastest to integrate, ~1 day of work
+  - EDGAR — free forever, no API key, more engineering
+  - Simfin — good middle ground with a Python SDK

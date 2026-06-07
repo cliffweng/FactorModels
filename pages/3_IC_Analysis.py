@@ -10,7 +10,8 @@ import src.factors  # noqa: register factors
 
 from src.data.loader import load_prices
 from src.data.universe import get_universe, BENCHMARK
-UNIVERSE = get_universe()
+UNIVERSE = st.session_state.get("filtered_universe") or get_universe()
+st.session_state["_ue_page_run"] = 0
 from src.factors.base import get_registry
 from src.analysis.ic import (
     compute_ic_series, compute_rolling_ic, compute_ic_decay,
@@ -50,6 +51,12 @@ with st.sidebar:
     min_obs = st.slider("Min Cross-Section Obs", 5, 30, 10)
     force_refresh = st.button("Refresh Data")
 
+    st.markdown("---")
+    _sectors = st.session_state.get("selected_sectors") or st.session_state.get("_sectors_shadow")
+    st.caption(
+        f"Universe: {', '.join(_sectors)} ({len(UNIVERSE)} tickers)"
+        if _sectors else f"Universe: all sectors ({len(UNIVERSE)} tickers)"
+    )
     st.markdown("---")
     st.markdown(f"**Factor:** {factor.description}")
 
@@ -95,14 +102,14 @@ if factor_panel.empty:
 # Compute IC metrics
 # ---------------------------------------------------------------------------
 @st.cache_data(ttl=3600, show_spinner="Computing IC series...")
-def get_ic_metrics(factor_panel_key, _factor_panel, _daily_returns, horizon, min_obs, rolling_window):
+def get_ic_metrics(factor_name, rebal_freq, horizon, tickers, min_obs, rolling_window, _factor_panel, _daily_returns):
     ic = compute_ic_series(_factor_panel, _daily_returns, horizon_days=horizon, min_obs=min_obs)
     rolling = compute_rolling_ic(ic, window=rolling_window)
     return ic, rolling
 
 ic_series, rolling_ic = get_ic_metrics(
-    f"{factor_name}_{rebal_freq}_{horizon}",
-    factor_panel, daily_returns, horizon, min_obs, rolling_window
+    factor_name, rebal_freq, horizon, tickers, min_obs, rolling_window,
+    factor_panel, daily_returns
 )
 
 if len(ic_series) < 3:
@@ -157,10 +164,10 @@ with tab2:
 with tab3:
     with st.spinner("Computing IC decay..."):
         @st.cache_data(ttl=3600)
-        def get_ic_decay(_panel, _rets, factor_key):
+        def get_ic_decay(factor_name, rebal_freq, tickers, _panel, _rets):
             return compute_ic_decay(_panel, _rets)
 
-        decay_df = get_ic_decay(factor_panel, daily_returns, f"{factor_name}_{rebal_freq}")
+        decay_df = get_ic_decay(factor_name, rebal_freq, tickers, factor_panel, daily_returns)
 
     fig_decay = plot_ic_decay(decay_df, title=f"{factor.label} — IC Decay by Horizon")
     st.plotly_chart(fig_decay, use_container_width=True)

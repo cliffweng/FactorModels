@@ -12,8 +12,9 @@ import src.factors  # noqa: register all factors
 
 from src.data.loader import load_prices
 from src.data.universe import get_universe, get_ticker_sector, BENCHMARK
-UNIVERSE = get_universe()
+UNIVERSE      = st.session_state.get("filtered_universe") or get_universe()
 TICKER_SECTOR = get_ticker_sector()
+st.session_state["_ue_page_run"] = 0
 
 from src.factors.base import get_registry
 from src.factors.composite import CompositeModel
@@ -100,6 +101,13 @@ with st.sidebar:
     n_quantiles = st.slider("Quantiles", 3, 10, 5)
     lookback_years = st.slider("Price History (years)", 2, 5, 3)
     force_refresh = st.button("Refresh Data")
+
+    st.markdown("---")
+    _sectors = st.session_state.get("selected_sectors") or st.session_state.get("_sectors_shadow")
+    st.caption(
+        f"Universe: {', '.join(_sectors)} ({len(UNIVERSE)} tickers)"
+        if _sectors else f"Universe: all sectors ({len(UNIVERSE)} tickers)"
+    )
 
     if signal_type == "Factor" and not is_price_based:
         st.info(
@@ -264,7 +272,7 @@ if mode == "Full Basket":
         st.subheader("Historical Quintile Performance")
 
         @st.cache_data(ttl=3600, show_spinner="Running backtest...")
-        def cached_backtest(_panel, _daily_returns, direction, n_q, tx_bps=10):
+        def cached_backtest(direction, n_q, tickers, _panel, _daily_returns, tx_bps=10):
             bt  = run_backtest(_panel, _daily_returns, direction=direction,
                                n_quantiles=n_q, transaction_cost_bps=tx_bps)
             stock_cols_bt = [c for c in _daily_returns.columns if c != "SPY"]
@@ -273,7 +281,7 @@ if mode == "Full Basket":
             )
             return bt, qr
 
-        bt, qr = cached_backtest(panel, daily_returns, signal_direction, n_quantiles)
+        bt, qr = cached_backtest(signal_direction, n_quantiles, tickers, panel, daily_returns)
 
         # Quintile fan + L/S chart
         fan_col, ls_col = st.columns(2)
@@ -304,10 +312,10 @@ if mode == "Full Basket":
         # IC summary
         with st.expander("IC Analysis (basket-level)"):
             @st.cache_data(ttl=3600)
-            def cached_ic(_panel, _returns, horizon):
+            def cached_ic(horizon, tickers, _panel, _returns):
                 return compute_ic_series(_panel, _returns, horizon_days=horizon)
 
-            ic_s = cached_ic(panel, daily_returns_stocks, ic_horizon)
+            ic_s = cached_ic(ic_horizon, tickers, panel, daily_returns_stocks)
             if len(ic_s) >= 3:
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Mean IC", f"{ic_s.mean():.4f}")

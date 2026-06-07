@@ -22,29 +22,116 @@ st.title("Universe Explorer")
 st.caption("Explore the investment universe: sector composition, return history, and correlations")
 
 # ---------------------------------------------------------------------------
+# Background EDGAR cache warmup — fires once per session on first page visit
+# so fundamental data is ready by the time the user reaches Multi-Factor Model.
+# ---------------------------------------------------------------------------
+import threading
+from src.data.edgar import get_edgar_fundamentals_panel, edgar_cache_info
+
+_all_tickers = tuple(sorted(UNIVERSE))
+_cache_info  = edgar_cache_info(_all_tickers)
+_n_cached    = len(_cache_info["cached"])
+_n_total     = len(_all_tickers)
+_n_missing   = len(_cache_info["missing"])
+
+if _n_missing > 0 and not st.session_state.get("edgar_warmup_started"):
+    from loguru import logger as _log
+
+    def _warmup_edgar(tickers, n_missing):
+        _log.info(f"EDGAR warmup: starting background load for {n_missing} uncached tickers")
+        try:
+            get_edgar_fundamentals_panel(tickers)
+            _log.info("EDGAR warmup: complete")
+        except Exception as e:
+            _log.error(f"EDGAR warmup: failed — {type(e).__name__}: {e}")
+
+    threading.Thread(
+        target=_warmup_edgar, args=(_all_tickers, _n_missing), daemon=True
+    ).start()
+    st.session_state["edgar_warmup_started"] = True
+
+# ---------------------------------------------------------------------------
 # Sidebar controls
 # ---------------------------------------------------------------------------
+all_sectors = list(SECTOR_MAP.keys())
+
+# Stable-default pattern:
+# Streamlit keys its keyless widgets on hash(label, options, default). If default changes
+# between reruns, the widget is considered new and default is re-applied, wiping the user's
+# selection. So we compute _ue_widget_default ONCE per page session (on fresh navigation when
+# _ue_page_run == 0) and never change it mid-session. Other pages reset _ue_page_run to 0.
+_ue_page_run = st.session_state.get("_ue_page_run", 0)
+st.session_state["_ue_page_run"] = _ue_page_run + 1
+if _ue_page_run == 0:
+    st.session_state["_ue_widget_default"] = st.session_state.get("_sectors_shadow") or all_sectors
+
 with st.sidebar:
     st.header("Universe Settings")
-    all_sectors = list(SECTOR_MAP.keys())
     selected_sectors = st.multiselect(
-        "Sectors", all_sectors, default=all_sectors,
-        help="Filter the universe by sector"
+        "Sectors", all_sectors,
+        default=st.session_state["_ue_widget_default"],
+        help="Filter the universe by sector",
     )
     lookback_years = st.slider("Price History (years)", 1, 5, 3)
     force_refresh = st.button("Refresh Data", help="Force re-download from yfinance")
 
-# Filter universe
+    st.markdown("---")
+    if _n_missing == 0:
+        st.success(f"EDGAR ready — {_n_total} tickers cached")
+    elif st.session_state.get("edgar_warmup_started"):
+        st.info(
+            f"Loading EDGAR fundamental data in background "
+            f"({_n_cached}/{_n_total} tickers cached). "
+            "Multi-Factor Model fundamentals will be available once complete."
+        )
+    else:
+        st.warning(f"EDGAR data not cached ({_n_missing} tickers missing).")
+
+# Persist for cross-navigation and for other pages to read.
+st.session_state["_sectors_shadow"] = selected_sectors
+st.session_state["selected_sectors"] = selected_sectors
+
+# Filter universe by sector
 filtered = [t for t in UNIVERSE if TICKER_SECTOR.get(t) in selected_sectors]
 if not filtered:
     st.warning("No tickers selected. Pick at least one sector.")
     st.stop()
 
+# When sectors change, reset stock selection to all stocks in the new sector set
+_curr_sectors = frozenset(selected_sectors)
+if frozenset(st.session_state.get("_prev_sectors", [])) != _curr_sectors:
+    st.session_state["selected_tickers"] = sorted(filtered)
+st.session_state["_prev_sectors"] = list(selected_sectors)
+
+# Ensure stock selection contains only tickers currently in the filtered universe
+if "selected_tickers" not in st.session_state:
+    st.session_state["selected_tickers"] = sorted(filtered)
+else:
+    _valid = sorted([t for t in st.session_state["selected_tickers"] if t in filtered])
+    if not _valid:
+        st.session_state["selected_tickers"] = sorted(filtered)
+    elif _valid != sorted(st.session_state["selected_tickers"]):
+        st.session_state["selected_tickers"] = _valid
+
+with st.sidebar:
+    selected_tickers = st.multiselect(
+        "Stocks",
+        sorted(filtered),
+        key="selected_tickers",
+        help="Refine to specific tickers (defaults to all sector-filtered stocks)",
+    )
+    if not selected_tickers:
+        selected_tickers = sorted(filtered)
+        st.session_state["selected_tickers"] = selected_tickers
+
+# Propagate to all pages
+st.session_state["filtered_universe"] = selected_tickers
+
 # Date range
 import datetime
 end_date = datetime.date.today().strftime("%Y-%m-%d")
 start_date = (datetime.date.today() - datetime.timedelta(days=lookback_years * 365)).strftime("%Y-%m-%d")
-download_tickers = tuple(sorted(set(filtered + [BENCHMARK])))
+download_tickers = tuple(sorted(set(selected_tickers + [BENCHMARK])))
 
 # ---------------------------------------------------------------------------
 # Load data (cached)
@@ -61,7 +148,7 @@ with st.spinner("Loading data..."):
         st.stop()
 
 # Keep only tickers that loaded successfully
-available = [t for t in filtered if t in prices.columns]
+available = [t for t in selected_tickers if t in prices.columns]
 if not available:
     st.error("No price data available for selected tickers.")
     st.stop()

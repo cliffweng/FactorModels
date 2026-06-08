@@ -773,7 +773,28 @@ with tab_optimizer:
                     for r in opt_results
                 ]
                 fig_frontier = plot_efficient_frontier(frontier_df, named_pts)
-                st.plotly_chart(fig_frontier, use_container_width=True)
+                _frontier_event = st.plotly_chart(
+                    fig_frontier,
+                    on_select="rerun",
+                    key="frontier_chart",
+                    use_container_width=True,
+                )
+                # Click on a named method marker → update the objective dropdown.
+                # Trace 0 is the frontier curve (when present); named markers follow.
+                if _frontier_event.selection.points:
+                    _curve = _frontier_event.selection.points[0].get("curve_number", -1)
+                    _offset = 1 if not frontier_df.empty else 0
+                    _named_idx = _curve - _offset
+                    if 0 <= _named_idx < len(named_pts):
+                        _clicked_method = named_pts[_named_idx]["method"]
+                        _new_obj = next(
+                            (k for k, v in _OBJ_META.items()
+                             if _clicked_method.startswith(v["method_prefix"])),
+                            None,
+                        )
+                        if _new_obj and _new_obj != st.session_state.get("opt_objective"):
+                            st.session_state["opt_objective"] = _new_obj
+                            st.rerun()
 
                 # ---------------------
                 # 2-col grid: left = objective selector + apply, right = sensitivity
@@ -814,6 +835,14 @@ with tab_optimizer:
                         (r for r in opt_results if r.method.startswith(_prefix)),
                         opt_results[0],
                     )
+
+                    st.write("")
+                    for _fname, _fw in selected_result.weights.items():
+                        _label = active_labels.get(_fname, _fname)
+                        st.markdown(
+                            f"**{_label}** &nbsp; {_fw:.1%}",
+                            unsafe_allow_html=True,
+                        )
 
                     st.write("")
                     if st.button("Apply to Model Builder", type="primary"):

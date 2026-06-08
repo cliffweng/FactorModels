@@ -27,10 +27,11 @@ st.caption("How diversified is the factor library? Identify factor clusters and 
 # Sidebar
 # ---------------------------------------------------------------------------
 registry = get_registry()
-_active = st.session_state.get("active_factors")
+_DEFAULT_ACTIVE = frozenset(n for n, f in registry.items() if not f.requires_edgar and f.enabled_by_default)
+_active = st.session_state.get("active_factors", _DEFAULT_ACTIVE)
 all_factors = [
     (n, f) for n, f in registry.items()
-    if not f.requires_fundamentals and (_active is None or n in _active)
+    if not f.requires_fundamentals and not f.requires_edgar and n in _active
 ]
 price_factors_names = [n for n, f in all_factors]
 

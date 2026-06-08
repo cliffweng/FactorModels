@@ -2,6 +2,8 @@
 
 An interactive Streamlit app that demonstrates how a quant research team investigates equity factor models — from raw price data through to backtested long-short portfolios. Designed to be modular and pluggable so new factors can be added without touching the app layer.
 
+If you reference or clone this repo, make sure you give the credit back to me, thanks.
+
 ## Quick Start
 
 ```bash

@@ -14,6 +14,16 @@ class FiftyTwoWeekHighRatio(BaseFactor):
     description = "Price / 52-week high — lower ratio may indicate undervaluation (George & Hwang 2004)"
     category = "Value"
     direction = -1
+    formula        = "score = price(t) / max(price, 252d)"
+    academic_ref   = "George & Hwang (2004) — The 52-Week High and Momentum Investing"
+    interpretation = (
+        "**Anchoring-based momentum**: investors anchor to the 52-week high as a mental reference. "
+        "**High score (ratio near 1.0)** — stock is near its 52-week high; good news has fully "
+        "been priced in and may even be under-priced because analysts are reluctant to raise targets. "
+        "**Low score (far below 52-week high)** — direction = −1 means low ratio ranks in the "
+        "long book: the stock has room to recover toward its prior peak as information diffuses. "
+        "George & Hwang showed this measure subsumes much of the traditional 12-1 momentum signal."
+    )
 
     _WINDOW = 252
 
@@ -111,6 +121,15 @@ class PriceToBook(BaseFactor):
     direction = 1       # higher B/P = more value
     requires_edgar = True
     _edgar_field = "bvps"
+    formula        = "score = Book Value Per Share / Price  (B/P ratio)"
+    academic_ref   = "Fama & French (1992, 1993) — The Cross-Section of Expected Stock Returns"
+    interpretation = (
+        "**High score (high B/P = low P/B)** — stock trades cheaply relative to its accounting "
+        "book value; classic value signal. Fama & French found B/P among the strongest predictors "
+        "of cross-sectional returns, forming the 'HML' (High-Minus-Low) factor in their 3-factor model. "
+        "**Low score** — growth stock; market pays a premium for expected future earnings. "
+        "Data sourced from SEC EDGAR XBRL filings — point-in-time safe, no look-ahead bias."
+    )
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.Series:
         edgar_panel = kwargs.get("edgar_panel")
@@ -151,6 +170,16 @@ class PriceToEarnings(BaseFactor):
     direction = 1       # higher E/P = more value
     requires_edgar = True
     _edgar_field = "eps_ttm"
+    formula        = "score = EPS_TTM / Price  (earnings yield = E/P ratio)"
+    academic_ref   = "Basu (1977) — Investment Performance of Common Stocks in Relation to Their Price-Earnings Ratios"
+    interpretation = (
+        "**High score (high E/P = low P/E)** — stock generates a lot of earnings relative to "
+        "its price; Basu (1977) was the first to show low-P/E stocks systematically outperform. "
+        "**Earnings yield framing (E/P)** makes the score directly comparable across stocks: "
+        "a score of 0.08 means the stock earns 8 cents per dollar of market cap. "
+        "Uses TTM (trailing 12-month) diluted EPS from EDGAR XBRL, filed quarterly "
+        "— avoids the look-ahead bias of using reported annual figures."
+    )
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.Series:
         edgar_panel = kwargs.get("edgar_panel")

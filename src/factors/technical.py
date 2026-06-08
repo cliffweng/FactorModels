@@ -292,6 +292,16 @@ class RSI14(BaseFactor):
     description = "14-day Relative Strength Index — high RSI signals strong upward momentum"
     category  = "Momentum"
     direction = 1
+    formula        = "RSI = 100 − 100 / (1 + avg_gain / avg_loss),  Wilder EWM smoothing, 14d"
+    academic_ref   = "Wilder (1978) — New Concepts in Technical Trading Systems"
+    interpretation = (
+        "**RSI > 70**: traditionally 'overbought' — in cross-sectional context, a high RSI "
+        "stock has had more and larger up-days than down-days recently, signalling momentum. "
+        "**RSI < 30**: 'oversold' — mean-reversion traders interpret this as a bounce candidate. "
+        "**As a ranking factor**: higher RSI stocks exhibit stronger recent buying pressure "
+        "and tend to continue outperforming over the next 1–3 months in cross-sectional studies. "
+        "Bounded 0–100, so winsorising is less critical than for unbounded signals."
+    )
 
     _WINDOW = 14   # Wilder's original lookback period
 
@@ -336,6 +346,17 @@ class MACDHistogram(BaseFactor):
     description = "MACD(12,26,9) histogram — positive values signal bullish momentum"
     category  = "Momentum"
     direction = 1
+    formula        = "histogram = [EMA(12) − EMA(26)] − EMA9([EMA(12) − EMA(26)])"
+    academic_ref   = "Appel (1979); popularised in Appel (2005) — Technical Analysis: Power Tools for Active Investors"
+    interpretation = (
+        "**Positive histogram** — MACD line is above its signal line *and* the gap is still "
+        "widening: fast momentum is accelerating relative to the longer-term trend. "
+        "**Negative histogram** — momentum is decelerating or reversing; the fast EMA is "
+        "losing ground against the slow EMA. "
+        "The histogram is more sensitive than the raw MACD line because it captures the "
+        "*rate of change* of momentum, not just its level. "
+        "Unbounded — winsorise before using in a composite model."
+    )
 
     # Minimum history needed: EMA-26 needs ≥ 26 warm-up bars, plus 9 for the
     # signal EMA.  35 is a safe lower bound before values stabilise.
@@ -381,6 +402,16 @@ class BollingerPctB(BaseFactor):
     description = "Price position within 20-day Bollinger Bands — >0.5 signals upward trend"
     category  = "Momentum"
     direction = 1
+    formula        = "%B = (price − lower) / (upper − lower),  bands = SMA20 ± 2σ"
+    academic_ref   = "Bollinger (2001) — Bollinger on Bollinger Bands"
+    interpretation = (
+        "**%B = 1.0** — price is exactly at the upper band (2 std above mean): strong breakout. "
+        "**%B = 0.5** — price is at the 20-day moving average: neutral. "
+        "**%B = 0.0** — price is at the lower band: potential support or weakness. "
+        "**%B > 1.0** — price has broken above the upper band: continuation pattern. "
+        "Unlike raw price deviation, %B adjusts for the current volatility regime, "
+        "making it comparable across low-vol and high-vol stocks."
+    )
 
     _WINDOW = 20   # standard Bollinger Band length
 
@@ -424,6 +455,16 @@ class CCI20(BaseFactor):
     description = "20-day Commodity Channel Index — measures price deviation from its moving average"
     category  = "Momentum"
     direction = 1
+    formula        = "CCI = (price − MA20) / (0.015 × MAD20),  MAD = mean absolute deviation"
+    academic_ref   = "Lambert (1980) — Commodity Channel Index: Tools for Trading Cyclical Trends"
+    interpretation = (
+        "**CCI > +100** — price is significantly above its 20-day average, suggesting "
+        "a strong uptrend or overbought conditions; ~15–20% of observations in a typical series. "
+        "**CCI near 0** — price is at its recent average: no directional trend. "
+        "**CCI < −100** — significantly below average: potential weakness or mean-reversion. "
+        "The 0.015 constant ensures ±100 captures roughly 70% of normal observations. "
+        "Note: uses close-only prices as proxy for typical price (H+L+C)/3."
+    )
 
     _WINDOW = 20
 
@@ -471,6 +512,16 @@ class PriceAcceleration(BaseFactor):
     description = "Recent 1-month return minus prior 1-month return — catches accelerating momentum"
     category  = "Momentum"
     direction = 1
+    formula        = "score = ret[t−21:t] − ret[t−42:t−21]  (recent 1m return minus prior 1m)"
+    academic_ref   = "Related to Grinblatt & Moskowitz (2004) — Predicting Stock Price Movements from Past Returns"
+    interpretation = (
+        "**Positive score** — the most recent month was stronger than the month before: "
+        "momentum is *accelerating*. This catches stocks that are just starting to break out. "
+        "**Negative score** — momentum is *fading*: the stock may still be up over two months, "
+        "but the rate of gain is slowing — an early warning of trend exhaustion. "
+        "Less correlated with raw momentum (12-1) than most other trend factors, "
+        "making it a useful diversifier in a composite model."
+    )
 
     _WINDOW = 21   # ≈ 1 calendar month of trading days
 
@@ -534,6 +585,17 @@ class TrendConsistency(BaseFactor):
     description = "Fraction of up-days over 6 months — rewards smooth, sustained directional moves"
     category  = "Momentum"
     direction = 1
+    formula        = "score = #{days with daily_return > 0} / 126"
+    academic_ref   = "Grinblatt & Moskowitz (2004) — Predicting Stock Price Movements from Past Returns"
+    interpretation = (
+        "**Score near 0.60** — 60% of the last 126 trading days were positive: consistent "
+        "uptrend driven by steady buying, not a single event spike. "
+        "**Score near 0.50** — coin-flip; no sustained direction. "
+        "**Score near 0.40** — persistent selling pressure. "
+        "Rewards quality of trend over magnitude: two stocks both up 20% over 6 months score "
+        "differently if one did it smoothly (high score) and one with a single gap-up (lower score). "
+        "Typical range is 0.40–0.65 for S&P 500 stocks."
+    )
 
     _WINDOW = 126   # ≈ 6 calendar months
 
@@ -589,6 +651,16 @@ class CalmarRatio(BaseFactor):
     description = "Annualized 1-year return divided by maximum drawdown — reward-to-risk quality"
     category  = "Momentum"
     direction = 1
+    formula        = "Calmar = annual_return(252d) / |max_drawdown(252d)|"
+    academic_ref   = "Young (1991) — The Calmar Ratio: A Smoother Tool; originally a hedge-fund performance metric"
+    interpretation = (
+        "**High score** — the stock has delivered strong 1-year returns while keeping its "
+        "worst peak-to-trough loss small: controlled, high-quality momentum. "
+        "A Calmar of 2.0 means the stock earned twice its worst drawdown as annual return. "
+        "**Low or negative score** — either weak returns, large drawdowns, or both. "
+        "Combines trend momentum and drawdown management in one metric — "
+        "useful for identifying stocks favoured by risk-conscious institutional buyers."
+    )
 
     _WINDOW = 252   # 1 trading year
 
@@ -664,6 +736,16 @@ class NormalizedATR(BaseFactor):
     description = "14-day mean absolute daily return — close-to-close volatility range measure"
     category  = "Risk"
     direction = -1   # low-volatility anomaly: less volatile stocks outperform
+    formula        = "ATR_norm = mean(|daily_return|, 14d)  ≈ close-to-close ATR / price"
+    academic_ref   = "Wilder (1978) — New Concepts in Technical Trading Systems"
+    interpretation = (
+        "**High score** — wide daily ranges; a score of 0.02 means the stock moves ±2% per day "
+        "on average (annualised ≈ 32% volatility). "
+        "**Low score** — tight, stable daily price action; typically a larger, more liquid stock. "
+        "Low-ATR stocks outperform because leverage-constrained investors over-bid high-ATR names "
+        "seeking market exposure, inflating prices relative to fundamentals. "
+        "Note: uses close-to-close returns as a proxy; standard ATR uses high-low-close ranges."
+    )
 
     _WINDOW = 14   # Wilder's original ATR lookback
 
@@ -715,6 +797,17 @@ class MaxDrawdown252(BaseFactor):
     description = "Worst peak-to-trough decline over the trailing year — absolute magnitude"
     category  = "Risk"
     direction = -1
+    formula        = "max_DD = |min((price − rolling_peak) / rolling_peak)|  over 252d"
+    academic_ref   = "Magdon-Ismail & Atiya (2004) — On the Maximum Drawdown of a Brownian Motion"
+    interpretation = (
+        "**High score** — the stock suffered a large peak-to-trough loss at some point in "
+        "the last year (e.g. 0.35 = 35% drawdown from peak). "
+        "Large drawdowns signal high tail risk and erode investor confidence, "
+        "leading to forced selling and sustained underperformance. "
+        "**Low score (near 0)** — the stock has barely pulled back from its highs all year: "
+        "strong, persistent uptrend with minimal capital destruction. "
+        "Often identifies 'quality compounder' stocks favoured by long-term institutions."
+    )
 
     _WINDOW = 252
 
@@ -780,6 +873,17 @@ class IdiosyncraticVol(BaseFactor):
     description = "60-day annualized residual return vol after removing market beta exposure"
     category  = "Risk"
     direction = -1
+    formula        = "idio_vol = std(r_i − β·r_SPY, 60d) × √252,  β = Cov(r_i, r_m) / Var(r_m)"
+    academic_ref   = "Ang, Hodrick, Xing & Zhang (2006) — The Cross-Section of Volatility and Expected Returns"
+    interpretation = (
+        "**The idiosyncratic volatility puzzle**: high firm-specific risk is *not* rewarded — "
+        "stocks with high idio vol reliably underperform. "
+        "**High score** — large unexplained return swings: earnings surprises, litigation risk, "
+        "news shocks, key-man risk. These stocks attract speculative capital that inflates prices. "
+        "**Low score** — smooth, market-correlated returns; typically stable, large-cap businesses "
+        "with predictable earnings. Removing market beta (β·r_SPY) ensures we measure "
+        "company-specific risk rather than amplified market exposure."
+    )
 
     _WINDOW = 60
 

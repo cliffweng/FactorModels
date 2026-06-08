@@ -4,8 +4,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import datetime
+import numpy as np
 import streamlit as st
 import pandas as pd
+from scipy.stats import spearmanr
 import src.factors  # noqa: register factors
 
 from src.data.loader import load_prices, get_fundamentals
@@ -28,42 +30,27 @@ registry = get_registry()
 
 # ---------------------------------------------------------------------------
 # Header-toggle ↔ active_factors sync  (snapshot-based)
-#
-# The header toggle for the currently-viewed factor and the per-factor toggles
-# on the Factor Library page both write to st.session_state["active_factors"].
-# We keep them consistent via a per-factor snapshot:
-#
-#   _fl_hdr_snaps[name] = value of active_factors for that factor on our last render
-#
-# On each rerun:
-#   • toggle differs from snapshot  → user just clicked → update active_factors
-#   • toggle equals snapshot but active_factors differs → external change (Factor Library)
-#                                                       → force header toggle key
-#   Either way, always write the final value back to the key before rendering.
 # ---------------------------------------------------------------------------
 
-_af = set(st.session_state.get("active_factors", set(registry.keys())))
-_fl_pre  = st.session_state.get("factor_lab_selected")   # set by on_change before rerun
-_snaps   = st.session_state.get("_fl_hdr_snaps", {})     # {factor_name: bool}
+_DEFAULT_ACTIVE = frozenset(n for n, f in registry.items() if not f.requires_edgar and f.enabled_by_default)
+_af = set(st.session_state.get("active_factors", _DEFAULT_ACTIVE))
+_fl_pre  = st.session_state.get("factor_lab_selected")
+_snaps   = st.session_state.get("_fl_hdr_snaps", {})
 
 if _fl_pre and _fl_pre in registry:
     _hdr_key = f"_hdr_active_{_fl_pre}"
-
     if _hdr_key in st.session_state and _fl_pre in _snaps:
         _cur  = st.session_state[_hdr_key]
         _snap = _snaps[_fl_pre]
         if _cur != _snap:
-            # User clicked the header toggle → propagate to active_factors
             _af = set(_af)
             _af.add(_fl_pre) if _cur else _af.discard(_fl_pre)
             st.session_state["active_factors"] = _af
-        # External change is handled below by the unconditional force.
-    # Always force the key so it reflects the current (possibly externally updated) state
     st.session_state[_hdr_key] = _fl_pre in _af
     _snaps[_fl_pre] = _fl_pre in _af
     st.session_state["_fl_hdr_snaps"] = _snaps
 
-active_factors = _af   # local alias; mutated above if user clicked
+active_factors = _af
 
 # ---------------------------------------------------------------------------
 # Sidebar — factor selector (all factors, category headers as dividers)
@@ -120,7 +107,6 @@ with st.sidebar:
     factor_name: str = st.session_state["factor_lab_selected"]
     factor = registry[factor_name]
 
-    # Ensure the header-toggle key exists for a newly-selected factor
     if f"_hdr_active_{factor_name}" not in st.session_state:
         st.session_state[f"_hdr_active_{factor_name}"] = factor_name in active_factors
 
@@ -202,7 +188,7 @@ if winsorize:
 if standardize:
     scores = factor.z_score(scores)
 
-# Forward returns for scatter tab
+# Forward returns for scatter + IC
 rets_daily       = prices_stocks.pct_change().dropna(how="all")
 last_date        = prices_stocks.index[-1]
 fwd_rets         = pd.Series(dtype=float)
@@ -228,37 +214,88 @@ try:
 except Exception:
     pass
 
+# Pre-compute IC (used in both metrics row and scatter tab)
+_ic_val = _ic_tstat = _ic_pval = _ic_n = None
+_horizon_label = {
+    1: "1-day", 5: "1-week", 10: "2-week",
+    21: "1-month", 42: "2-month", 63: "3-month",
+}.get(fwd_horizon, f"{fwd_horizon}-day")
+
+if not fwd_rets.empty:
+    _common = scatter_scores.index.intersection(fwd_rets.index)
+    if len(_common) > 10:
+        _ic_val, _ic_pval = spearmanr(scatter_scores[_common], fwd_rets[_common])
+        _ic_n = len(_common)
+        _ic_tstat = _ic_val * np.sqrt((_ic_n - 2) / max(1 - _ic_val ** 2, 1e-9))
+
 # ---------------------------------------------------------------------------
-# Factor header — name + active toggle + metadata
+# Factor header — name + active toggle
 # ---------------------------------------------------------------------------
 _col_name, _col_toggle = st.columns([7, 1])
-
 with _col_name:
     st.subheader(factor.label)
-
 with _col_toggle:
-    # Key was already set by the sync block at the top of this script.
     st.toggle("Active", key=f"_hdr_active_{factor_name}")
 
+# Row 1: Category | Direction | Description
 _dir_text = "Higher is better (+)" if factor.direction == 1 else "Lower is better (−)"
-_m1, _m2, _m3 = st.columns(3)
-_m1.markdown(f"**Category:** {factor.category}")
-_m2.markdown(f"**Direction:** {_dir_text}")
-_m3.markdown(f"**Description:** {factor.description}")
+_mc1, _mc2, _mc3 = st.columns(3)
+_mc1.markdown(f"**Category:** {factor.category}")
+_mc2.markdown(f"**Direction:** {_dir_text}")
+_mc3.markdown(f"**Description:** {factor.description}")
+
+# Row 2: Formula | Reference  (only shown when populated)
+if factor.formula or factor.academic_ref:
+    _mf1, _mf2 = st.columns(2)
+    if factor.formula:
+        _mf1.markdown(f"**Formula:** `{factor.formula}`")
+    if factor.academic_ref:
+        _mf2.markdown(f"**Reference:** {factor.academic_ref}")
+
+# Educational expander: plain-English interpretation
+if factor.interpretation:
+    with st.expander("About this factor", expanded=False):
+        st.markdown(factor.interpretation)
+
 if factor.requires_fundamentals:
-    st.info("Snapshot fundamental factor — no historical panel available.")
+    st.info("Snapshot fundamental factor — no historical panel available for IC / Backtest.")
 
 st.markdown("---")
 
 # ---------------------------------------------------------------------------
-# Metrics
+# Metrics — two rows of four
 # ---------------------------------------------------------------------------
+_desc = scores.describe(percentiles=[0.25, 0.5, 0.75])
+
+# Row 1: basic distribution stats
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Coverage", f"{len(scores)} / {len(stock_tickers_available)} tickers")
-m2.metric("Mean Score", f"{scores.mean():.4f}")
-m3.metric("Std Dev", f"{scores.std():.4f}")
-top5 = scores.nlargest(5)
-m4.metric("Top Ticker", f"{top5.index[0]} ({top5.iloc[0]:.3f})")
+m1.metric("Coverage",   f"{len(scores)} / {len(stock_tickers_available)} tickers")
+m2.metric("Mean Score", f"{_desc['mean']:.4f}")
+m3.metric("Median",     f"{_desc['50%']:.4f}")
+m4.metric("Std Dev",    f"{_desc['std']:.4f}")
+
+# Row 2: tail shape + predictive IC
+m5, m6, m7, m8 = st.columns(4)
+m5.metric("Min",      f"{_desc['min']:.4f}")
+m6.metric("Max",      f"{_desc['max']:.4f}")
+m7.metric(
+    "Skewness",
+    f"{scores.skew():.3f}",
+    help="0 = symmetric  |  +ve = right tail (few very high scores)  |  −ve = left tail.",
+)
+if _ic_val is not None:
+    m8.metric(
+        f"Rank IC ({_horizon_label})",
+        f"{_ic_val:.4f}",
+        help=(
+            f"Spearman rank correlation between scores and {_horizon_label} forward returns "
+            f"(n={_ic_n}).  |IC| > 0.05 is considered meaningful in practice; "
+            f"|IC| > 0.10 is strong.  t-stat = {_ic_tstat:.2f},  p = {_ic_pval:.3f}."
+        ),
+    )
+else:
+    top5 = scores.nlargest(5)
+    m8.metric("Top Ticker", f"{top5.index[0]} ({top5.iloc[0]:.3f})")
 
 st.markdown("---")
 
@@ -267,6 +304,7 @@ st.markdown("---")
 # ---------------------------------------------------------------------------
 tab1, tab2, tab3 = st.tabs(["Factor Scores", "Distribution", "Score vs. Return"])
 
+# ── Tab 1: bar chart ────────────────────────────────────────────────────────
 with tab1:
     fig_bar = plot_factor_bar(
         scores,
@@ -275,6 +313,7 @@ with tab1:
     )
     st.plotly_chart(fig_bar, use_container_width=True)
 
+# ── Tab 2: distribution + statistics table ──────────────────────────────────
 with tab2:
     fig_dist = plot_factor_distribution(
         scores,
@@ -283,39 +322,107 @@ with tab2:
     )
     st.plotly_chart(fig_dist, use_container_width=True)
 
+    st.markdown("**Score distribution statistics**")
+    _iqr = _desc["75%"] - _desc["25%"]
+    _stats_rows = [
+        ("Count",             f"{int(_desc['count'])}"),
+        ("Minimum",           f"{_desc['min']:.4f}"),
+        ("25th Percentile",   f"{_desc['25%']:.4f}"),
+        ("Median",            f"{_desc['50%']:.4f}"),
+        ("75th Percentile",   f"{_desc['75%']:.4f}"),
+        ("Maximum",           f"{_desc['max']:.4f}"),
+        ("Mean",              f"{_desc['mean']:.4f}"),
+        ("Std Dev",           f"{_desc['std']:.4f}"),
+        ("IQR (75th − 25th)", f"{_iqr:.4f}"),
+        ("Skewness",          f"{scores.skew():.4f}"),
+        ("Excess Kurtosis",   f"{scores.kurt():.4f}"),
+    ]
+    st.dataframe(
+        pd.DataFrame(_stats_rows, columns=["Statistic", "Value"]),
+        hide_index=True,
+        use_container_width=True,
+    )
+    st.caption(
+        "**Skewness:** 0 = symmetric; positive = right-tailed (a few very high scores pull the mean above median); "
+        "negative = left-tailed.  "
+        "**Excess kurtosis:** 0 = normal distribution; positive = fatter tails than normal (more extreme outliers)."
+    )
+
+# ── Tab 3: IC statistics + scatter ──────────────────────────────────────────
 with tab3:
     if fwd_rets.empty:
         st.info("Forward return data not available (insufficient future data for this horizon).")
     else:
-        _hlabel = {1: "1-day", 5: "1-week", 10: "2-week", 21: "1-month", 42: "2-month", 63: "3-month"}.get(fwd_horizon, f"{fwd_horizon}-day")
+        if _ic_val is not None:
+            # IC stats row
+            _ci1, _ci2, _ci3, _ci4 = st.columns(4)
+            _ci1.metric(
+                "Rank IC",
+                f"{_ic_val:.4f}",
+                help="Spearman rank correlation between factor scores and forward returns.",
+            )
+            _ci2.metric(
+                "t-statistic",
+                f"{_ic_tstat:.2f}",
+                help="|t| > 2 suggests the IC is statistically distinguishable from zero at ~5% significance.",
+            )
+            _ci3.metric(
+                "p-value",
+                f"{_ic_pval:.3f}",
+                help="Probability of seeing this IC by chance if the true IC were zero. < 0.05 = significant.",
+            )
+            _ci4.metric(
+                "Pairs (N)",
+                f"{_ic_n}",
+                help="Number of ticker–return pairs used to compute the IC.",
+            )
+            _sig_str = "✓ significant at 5%" if _ic_pval < 0.05 else "✗ not significant at 5%"
+            st.caption(
+                f"**IC interpretation guide:** |IC| < 0.03 = negligible, 0.03–0.05 = weak, "
+                f"0.05–0.10 = moderate, > 0.10 = strong.  "
+                f"This factor's IC is **{_sig_str}** based on "
+                f"scores at {scatter_ref_date.strftime('%Y-%m-%d')}."
+            )
+            st.markdown("---")
+
         fig_scatter = plot_factor_scatter(
             scatter_scores,
             fwd_rets,
             ticker_sector=TICKER_SECTOR,
-            title=f"{factor.label} vs {_hlabel} Forward Return (scores at {scatter_ref_date.strftime('%Y-%m-%d')})",
+            title=f"{factor.label} vs {_horizon_label} Forward Return "
+                  f"(scores at {scatter_ref_date.strftime('%Y-%m-%d')})",
         )
         st.plotly_chart(fig_scatter, use_container_width=True)
         st.caption(
             f"Factor scores computed at {scatter_ref_date.strftime('%Y-%m-%d')} — "
-            f"the last date with complete {_hlabel} forward return data."
+            f"the last date with complete {_horizon_label} forward return data."
         )
 
 # ---------------------------------------------------------------------------
-# Top / Bottom table
+# Top / Bottom table  (with percentile rank)
 # ---------------------------------------------------------------------------
 st.markdown("---")
 st.subheader("Top & Bottom 10 Stocks")
 c_top, c_bot = st.columns(2)
 
+_pct_ranks = scores.rank(pct=True)
 score_df = pd.DataFrame({
-    "Score": scores,
-    "Sector": pd.Series({t: TICKER_SECTOR.get(t, "?") for t in scores.index}),
+    "Score":      scores,
+    "Percentile": _pct_ranks.map(lambda x: f"{x:.0%}"),
+    "Sector":     pd.Series({t: TICKER_SECTOR.get(t, "?") for t in scores.index}),
 })
 
 with c_top:
-    st.markdown(f"**Top 10** (highest {factor.label})")
-    st.dataframe(score_df.nlargest(10, "Score").round(4), use_container_width=True)
+    st.markdown(f"**Top 10** — highest {factor.label} scores")
+    st.dataframe(score_df.nlargest(10, "Score").round({"Score": 4}), use_container_width=True)
 
 with c_bot:
-    st.markdown(f"**Bottom 10** (lowest {factor.label})")
-    st.dataframe(score_df.nsmallest(10, "Score").round(4), use_container_width=True)
+    st.markdown(f"**Bottom 10** — lowest {factor.label} scores")
+    st.dataframe(score_df.nsmallest(10, "Score").round({"Score": 4}), use_container_width=True)
+
+st.caption(
+    "**Percentile** = score rank within today's cross-section.  "
+    "100% = highest score in the universe; 1% = lowest.  "
+    "For direction = +1 factors, top-10 stocks are long candidates; "
+    "for direction = −1, bottom-10 are the long candidates."
+)

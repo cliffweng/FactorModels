@@ -23,7 +23,10 @@ registry = get_registry()
 #   • "Factor Lab changed active_factors externally" → active_factors differs from snapshot
 # ---------------------------------------------------------------------------
 
-_af = set(st.session_state.get("active_factors", set(registry.keys())))
+# EDGAR factors are disabled by default to prevent accidental downloads on first visit.
+# Users can enable them explicitly via the toggles below.
+_DEFAULT_ACTIVE = frozenset(n for n, f in registry.items() if not f.requires_edgar and f.enabled_by_default)
+_af = set(st.session_state.get("active_factors", _DEFAULT_ACTIVE))
 _snap_raw = st.session_state.get("_flib_snap")
 
 if _snap_raw is None:

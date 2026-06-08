@@ -29,11 +29,12 @@ st.caption("Information Coefficient: how well does the factor rank tomorrow's wi
 # Sidebar
 # ---------------------------------------------------------------------------
 registry = get_registry()
-_active = st.session_state.get("active_factors")
-# Only price-based factors that are active support panel / time-series IC
+_DEFAULT_ACTIVE = frozenset(n for n, f in registry.items() if not f.requires_edgar and f.enabled_by_default)
+_active = st.session_state.get("active_factors", _DEFAULT_ACTIVE)
+# Only price-based, non-EDGAR factors that are active support panel / time-series IC
 price_factors = {
     f.label: name for name, f in registry.items()
-    if not f.requires_fundamentals and (_active is None or name in _active)
+    if not f.requires_fundamentals and not f.requires_edgar and name in _active
 }
 
 with st.sidebar:

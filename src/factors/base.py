@@ -62,6 +62,17 @@ class BaseFactor(ABC):
     requires_fundamentals: bool = False
     requires_edgar: bool = False        # True → needs EDGAR historical data for compute_panel()
 
+    # Optional educational metadata — shown in the Factor Lab "About" panel.
+    # Subclasses should override these; empty strings are silently skipped in the UI.
+    formula: str = ""         # display formula, e.g. "score = p(t-21)/p(t-252) − 1"
+    academic_ref: str = ""    # key citation, e.g. "Jegadeesh & Titman (1993)"
+    interpretation: str = ""  # plain-English: what high/low scores mean
+
+    # When False, the factor is excluded from the default active set shown on
+    # first visit.  Users must enable it manually in the Factor Library page.
+    # Set to False for experimental, niche, or slow-to-compute factors.
+    enabled_by_default: bool = True
+
     @abstractmethod
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.Series:
         """Cross-sectional factor scores at the most recent date.

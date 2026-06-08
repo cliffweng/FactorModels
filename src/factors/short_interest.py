@@ -38,6 +38,17 @@ class ShortInterestRatio(BaseFactor):
     category           = "Risk"
     direction          = -1    # higher days-to-cover → more crowded → expect underperformance
     requires_fundamentals = True
+    formula        = "score = shares_short / avg_daily_volume  (days to cover)"
+    academic_ref   = "Asquith, Pathak & Ritter (2005) — Short Interest, Institutional Ownership, and Stock Returns"
+    interpretation = (
+        "**High score (many days to cover)** — it would take the entire short-seller "
+        "community many days of average trading volume to exit their positions: a crowded, "
+        "illiquid short that tends to underperform as it is hard to exit quickly. "
+        "**Low score** — short sellers can exit easily; less short-seller-driven price pressure. "
+        "A days-to-cover ratio above 10 is often considered 'heavily shorted'. "
+        "Short sellers are typically informed: high short interest signals fundamental concerns "
+        "identified by sophisticated investors through detailed company analysis."
+    )
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.Series:
         fundamentals = kwargs.get("fundamentals")
@@ -71,6 +82,18 @@ class ShortPercentFloat(BaseFactor):
     category           = "Risk"
     direction          = -1    # high short % → crowded → underperforms
     requires_fundamentals = True
+    formula        = "score = shares_short / float_shares"
+    academic_ref   = "Dechow, Hutton, Meulbroek & Sloan (2001) — Short-Sellers, Fundamental Analysis and Stock Returns"
+    interpretation = (
+        "**>10% short of float** — heavily shorted; short sellers have collectively bet "
+        "a significant fraction of the tradeable supply will fall. "
+        "Dechow et al. showed short sellers are skilled fundamental analysts: stocks they target "
+        "are genuinely overvalued and subsequently underperform. "
+        "**<2% short of float** — minimal short interest; either little institutional bearish "
+        "coverage, or the stock is difficult to borrow. "
+        "**Squeeze risk**: very high short float can occasionally reverse dramatically when "
+        "positive news forces short covering — a separate event risk not captured by this factor."
+    )
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.Series:
         fundamentals = kwargs.get("fundamentals")
@@ -104,6 +127,17 @@ class ShortInterestChange(BaseFactor):
     category           = "Risk"
     direction          = -1    # increasing short interest → bearish → underperforms
     requires_fundamentals = True
+    formula        = "score = (shares_short − shares_short_prior_month) / |shares_short_prior_month|"
+    academic_ref   = "Desai, Ramesh, Thiagarajan & Balachandran (2002) — An Investigation of the Informational Role of Short Interest in the Nasdaq Market"
+    interpretation = (
+        "**Positive score (rising short interest)** — more shares are now sold short versus "
+        "last month; growing bearish conviction from informed traders. "
+        "Desai et al. found that *increases* in short interest predict negative returns "
+        "even more reliably than the level of short interest. "
+        "**Negative score (short covering)** — short sellers are buying back shares to exit "
+        "positions; can be a near-term bullish catalyst as covering demand supports the price. "
+        "A score of +0.20 means short interest grew 20% month-over-month — a significant escalation."
+    )
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.Series:
         fundamentals = kwargs.get("fundamentals")

@@ -68,6 +68,16 @@ class RealizedVol60(BaseFactor):
     description = "Annualized 60-day realized return volatility — lower is better (Low-Vol anomaly)"
     category  = "Risk"
     direction = -1   # low volatility → higher risk-adjusted return (low-vol anomaly)
+    formula        = "RVol = std(daily_returns, 60d) × √252"
+    academic_ref   = "Ang, Hodrick, Xing & Zhang (2006) — The Cross-Section of Volatility and Expected Returns"
+    interpretation = (
+        "**Counter-intuitive result**: lower volatility stocks historically *outperform* "
+        "higher volatility stocks (low-vol anomaly). "
+        "**High score** — volatile stock; leverage-constrained investors overpay for high-vol "
+        "names seeking market exposure without borrowing, inflating their prices. "
+        "**Low score** — calm, predictable price path; tends to outperform on a risk-adjusted basis. "
+        "Highly correlated with ATR_NORM — consider using only one in a composite."
+    )
 
     _WINDOW = 60   # 60 trading days ≈ 3 calendar months
 
@@ -166,6 +176,16 @@ class Beta252(BaseFactor):
     description = "252-day rolling beta vs SPY — deviation from 1.0 used as factor score"
     category  = "Risk"
     direction = -1   # low beta → lower systematic risk → outperformance (low-beta anomaly)
+    formula        = "β = Cov(r_i, r_SPY) / Var(r_SPY)  over 252 trading days"
+    academic_ref   = "Black (1972); Frazzini & Pedersen (2014) — Betting Against Beta"
+    interpretation = (
+        "**High score** — amplifies market moves; CAPM predicts it should earn higher returns, "
+        "but empirically the security market line is *flatter* than theory says: high-beta "
+        "stocks are over-priced and underperform on a risk-adjusted basis. "
+        "**Low score (β < 1)** — defensive stock; dampens market drawdowns. "
+        "The Frazzini & Pedersen (2014) BAB factor earns ~7% per year across global markets "
+        "by being long low-beta and short high-beta stocks."
+    )
 
     _WINDOW = 252   # 1 trading year for a reliable OLS estimate
 

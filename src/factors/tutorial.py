@@ -61,6 +61,16 @@ class SMACross(BaseFactor):
     description = "50-day SMA divided by 200-day SMA minus 1 — trend-following crossover"
     category  = "Momentum"
     direction = 1          # positive ratio = uptrend = expected outperformance
+    formula        = "score = SMA(50) / SMA(200) − 1"
+    academic_ref   = "Brock, Lakonishok & LeBaron (1992) — Simple Technical Trading Rules and the Stochastic Properties of Stock Returns"
+    interpretation = (
+        "**Positive score (golden cross)** — 50-day average above 200-day: the stock is in a "
+        "sustained uptrend. The *magnitude* tells you how far the trend has extended: "
+        "+0.10 means the fast average is 10% above the slow average — a strong trend. "
+        "**Negative score (death cross)** — 50-day below 200-day: downtrend in place. "
+        "Brock et al. (1992) provided early statistical evidence that simple moving-average "
+        "rules generated significant excess returns on the DJIA from 1897–1986."
+    )
 
     _FAST = 50             # days for the fast (responsive) moving average
     _SLOW = 200            # days for the slow (baseline) moving average
@@ -134,6 +144,17 @@ class UpDayRatio(BaseFactor):
     description = "Fraction of positive-return days over the trailing 252 trading days"
     category  = "Momentum"
     direction = 1
+    formula        = "score = #{days with daily_return > 0} / 252  over trailing year"
+    academic_ref   = "Related to Grinblatt & Moskowitz (2004) — directional consistency measure"
+    interpretation = (
+        "**Score of 0.55** — 55% of trading days in the past year were positive: "
+        "persistently more buyers than sellers. "
+        "**Score near 0.50** — no sustained directional bias. "
+        "**Score of 0.60+** — exceptionally consistent uptrend, typically seen in quality "
+        "compounders with steady earnings growth. "
+        "Unlike raw momentum (which can come from a single large day), a high up-day ratio "
+        "indicates broad-based, recurring buying activity across the full year."
+    )
 
     _WINDOW = 252   # trailing year
 
@@ -207,6 +228,17 @@ class RollingSharpe(BaseFactor):
     description = "252-day mean daily return divided by daily return volatility"
     category  = "Momentum"
     direction = 1
+    formula        = "score = mean(daily_ret, 252d) / std(daily_ret, 252d)  (unnormalised Sharpe)"
+    academic_ref   = "Sharpe (1966) — Mutual Fund Performance; applied cross-sectionally as a quality-momentum signal"
+    interpretation = (
+        "**High score** — the stock has delivered above-average returns *smoothly*: "
+        "high reward relative to its own variability. "
+        "Think of it as momentum quality: two stocks up 20% over the year score differently "
+        "if one did it with 10% annualised vol (score ≈ 1.26) vs 30% vol (score ≈ 0.42). "
+        "**Zero or negative score** — flat or declining stock. "
+        "Note: the √252 annualisation factor is omitted because it cancels in cross-sectional ranking. "
+        "The denominator is replaced with NaN if vol = 0 (stock never moved)."
+    )
 
     _WINDOW = 252
 
@@ -283,6 +315,17 @@ class ReturnSkewness(BaseFactor):
     description = "60-day rolling skewness of daily returns — lottery-stock signal"
     category  = "Risk"
     direction = -1   # high skew = lottery = overpriced → direction inverted
+    formula        = "score = E[(r − μ)³] / σ³  over trailing 60 trading days"
+    academic_ref   = "Bali, Cakici & Whitelaw (2011) — Maxing Out: Stocks as Lotteries and the Cross-Section of Expected Returns"
+    interpretation = (
+        "**High positive skew** — many small losses but occasional huge gains: a 'lottery ticket' stock. "
+        "Investors overpay for the chance at a big payoff, pushing prices above fair value. "
+        "High-skew stocks subsequently *underperform* (direction = −1: low-skew ranks in long book). "
+        "**Symmetric or negative skew** — return distribution closer to normal or left-tailed; "
+        "not over-priced for lottery-ticket appeal. "
+        "Bali et al. found that the MAX statistic (highest single-day return over the month) "
+        "captures similar information and is highly correlated with rolling skewness."
+    )
 
     _WINDOW = 60
 
@@ -353,6 +396,16 @@ class ShortTermZScore(BaseFactor):
     description = "Price deviation from 20-day SMA normalized by 20-day price std — mean-reversion signal"
     category  = "Momentum"   # reversal lives in the Momentum category by convention
     direction = -1            # high z-score = overbought = expect fall
+    formula        = "score = (price − SMA20) / rolling_std(price, 20d)"
+    academic_ref   = "Poterba & Summers (1988) — Mean Reversion in Stock Prices: Evidence and Implications"
+    interpretation = (
+        "**High z-score (+2 or above)** — price is 2 standard deviations above its 20-day mean: "
+        "overbought; mean-reversion theory predicts a pullback. direction=−1 → this ranks in the *short* book. "
+        "**Low z-score (−2 or below)** — oversold: price has moved far below its recent average; "
+        "bounce expected → ranks in the *long* book. "
+        "Unlike Short-Term Reversal (which uses raw 1-week return), the z-score adjusts for "
+        "volatility: a 5% move means more for a low-vol stock than a high-vol one."
+    )
 
     _WINDOW = 20
 

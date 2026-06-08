@@ -22,6 +22,16 @@ class ROEFactor(BaseFactor):
     direction = 1
     requires_edgar = True
     _edgar_field = "roe"
+    formula        = "score = Net Income TTM / Stockholders' Equity"
+    academic_ref   = "Haugen & Baker (1996); Novy-Marx (2013) — The Other Side of Value"
+    interpretation = (
+        "**High score** — management is generating a large profit from every dollar of "
+        "shareholders' equity; a hallmark of durable competitive advantages (moats). "
+        "ROE > 15% is often considered high quality; ROE > 30% suggests exceptional returns "
+        "on capital (e.g. asset-light businesses with pricing power). "
+        "**Low or negative ROE** — capital is being consumed or destroyed; typically "
+        "predicts underperformance. EDGAR TTM data is point-in-time safe."
+    )
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.Series:
         edgar_panel = kwargs.get("edgar_panel")
@@ -56,6 +66,17 @@ class GrossMarginFactor(BaseFactor):
     direction = 1
     requires_edgar = True
     _edgar_field = "gross_margin"
+    formula        = "score = (Revenue − COGS) / Revenue  (gross profit margin)"
+    academic_ref   = "Novy-Marx (2013) — The Other Side of Value: The Gross Profitability Premium"
+    interpretation = (
+        "**High score** — business retains a large fraction of revenue after direct production "
+        "costs; signals pricing power, brand strength, or technological differentiation. "
+        "Novy-Marx (2013) showed gross profitability has predictive power comparable to B/P "
+        "and they are nearly uncorrelated — combining them in a composite adds real alpha. "
+        "**Low score** — commodity-like business with thin margins, vulnerable to input cost "
+        "increases. Gross margin is more stable than net margin (less affected by financing "
+        "or accounting choices), making it a cleaner quality signal."
+    )
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.Series:
         edgar_panel = kwargs.get("edgar_panel")

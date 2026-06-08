@@ -53,6 +53,14 @@ class Momentum12_1(BaseFactor):
     description = "12-month price return skipping last month (Jegadeesh & Titman 1993)"
     category  = "Momentum"
     direction = 1
+    formula        = "return = price(t−21) / price(t−252) − 1"
+    academic_ref   = "Jegadeesh & Titman (1993) — Returns to Buying Winners and Selling Losers"
+    interpretation = (
+        "**High score** — stock has delivered a strong 11-month return with a 1-month skip; "
+        "momentum is expected to continue over the next 3–12 months. "
+        "**Low score** — recent loser; academic evidence suggests further underperformance. "
+        "One of the most replicated anomalies in asset pricing, documented across 40+ markets."
+    )
 
     # Trading-day lookbacks
     _LONG = 252   # ~12 months: start of the return measurement window
@@ -133,6 +141,14 @@ class Momentum6_1(BaseFactor):
     description = "6-month price return skipping last month"
     category  = "Momentum"
     direction = 1
+    formula        = "return = price(t−21) / price(t−126) − 1"
+    academic_ref   = "Jegadeesh & Titman (1993); Fama & French (1996)"
+    interpretation = (
+        "**High score** — strong 6-month return with 1-month skip; shorter formation window "
+        "makes this more reactive than the 12-1 factor but also increases portfolio turnover. "
+        "**Combining 6-1 and 12-1** in a composite provides modest diversification because "
+        "the formation windows only partially overlap (~5 months in common)."
+    )
 
     _LONG = 126   # ~6 calendar months
     _SKIP = 21    # ~1 calendar month (same skip as 12-1)
@@ -208,6 +224,16 @@ class ShortTermReversal(BaseFactor):
     description = "Negative 1-week return (De Bondt & Thaler reversal)"
     category  = "Momentum"
     direction = 1   # score is −return: high score = recent loser = expected winner
+    formula        = "score = −(price(t) / price(t−5) − 1)"
+    academic_ref   = "Jegadeesh (1990); Lo & MacKinlay (1990) — When Are Contrarian Profits Due to Stock Market Overreaction?"
+    interpretation = (
+        "**High score** — stock fell sharply last week; bid-ask bounce and liquidity restoration "
+        "typically push prices back up over the next few days. "
+        "**Low score** — recent winner; micro-structure noise may have inflated the price, "
+        "and a small reversion is likely. "
+        "Negatively correlated with intermediate momentum (12-1, 6-1) — "
+        "useful as a hedge against momentum crash risk."
+    )
 
     _LOOKBACK = 5   # 1 trading week
 

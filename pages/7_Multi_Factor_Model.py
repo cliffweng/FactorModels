@@ -44,16 +44,18 @@ st.caption("Combine multiple factors into a composite signal, evaluate IC, and o
 # Registry
 # ---------------------------------------------------------------------------
 registry = get_registry()
-_active = st.session_state.get("active_factors")
-# Filter to active factors only (default: all)
+# EDGAR factors disabled by default; user must enable them in Factor Library.
+_DEFAULT_ACTIVE = frozenset(n for n, f in registry.items() if not f.requires_edgar and f.enabled_by_default)
+_active = st.session_state.get("active_factors", _DEFAULT_ACTIVE)
+# Filter to active factors only
 all_factor_labels   = {
     f.label: name for name, f in registry.items()
-    if _active is None or name in _active
+    if name in _active
 }
 # Price-based active factors (used for defaults)
 price_factor_labels = {
     f.label: name for name, f in registry.items()
-    if not f.requires_fundamentals and (_active is None or name in _active)
+    if not f.requires_fundamentals and name in _active
 }
 
 # ---------------------------------------------------------------------------

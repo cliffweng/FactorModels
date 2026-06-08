@@ -28,10 +28,11 @@ st.caption("Quintile portfolios and long-short performance across time")
 # Sidebar
 # ---------------------------------------------------------------------------
 registry = get_registry()
-_active = st.session_state.get("active_factors")
+_DEFAULT_ACTIVE = frozenset(n for n, f in registry.items() if not f.requires_edgar and f.enabled_by_default)
+_active = st.session_state.get("active_factors", _DEFAULT_ACTIVE)
 price_factors = {
     f.label: name for name, f in registry.items()
-    if not f.requires_fundamentals and (_active is None or name in _active)
+    if not f.requires_fundamentals and not f.requires_edgar and name in _active
 }
 
 with st.sidebar:

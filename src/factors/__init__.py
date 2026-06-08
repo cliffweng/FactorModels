@@ -12,6 +12,11 @@ from src.factors.technical import (
 from src.factors.short_interest import (
     ShortInterestRatio, ShortPercentFloat, ShortInterestChange,
 )
+from src.factors.extras import (
+    RateOfChange20, WilliamsR14, StochasticK14, AroonOscillator25,
+    ReturnKurtosis60, UlcerIndex14, HistoricalVaR,
+    DividendYield, SalesToPrice, ReturnOnAssets,
+)
 
 from src.factors.base import get_registry, list_factors, get_factor
 
@@ -24,5 +29,8 @@ __all__ = [
     "RSI14", "MACDHistogram", "BollingerPctB", "CCI20", "PriceAcceleration",
     "TrendConsistency", "CalmarRatio", "NormalizedATR", "MaxDrawdown252", "IdiosyncraticVol",
     "ShortInterestRatio", "ShortPercentFloat", "ShortInterestChange",
+    "RateOfChange20", "WilliamsR14", "StochasticK14", "AroonOscillator25",
+    "ReturnKurtosis60", "UlcerIndex14", "HistoricalVaR",
+    "DividendYield", "SalesToPrice", "ReturnOnAssets",
     "get_registry", "list_factors", "get_factor",
 ]

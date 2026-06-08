@@ -269,10 +269,155 @@ def mean_variance(ic_dict: dict[str, pd.Series], risk_aversion: float = 1.0) -> 
     return _make_result(f"Mean-Variance (λ={risk_aversion:.1f})", w, mu, Sigma, names)
 
 
+def max_expected_return(ic_dict: dict[str, pd.Series]) -> OptimizeResult:
+    """Maximise mean IC: concentrates all weight on the factor with the highest mean IC."""
+    mu, Sigma, names = _align(ic_dict)
+    w = np.zeros(len(names))
+    w[int(np.argmax(mu))] = 1.0
+    return _make_result("Max Expected Return", w, mu, Sigma, names)
+
+
+def min_tracking_error(ic_dict: dict[str, pd.Series]) -> OptimizeResult:
+    """Minimum tracking-error portfolio vs equal-weight benchmark.
+
+    Minimises (w − w_eq)'Σ(w − w_eq) subject to w'μ ≥ w_eq'μ (at least equal-weight IC).
+    Produces the tightest-tracking portfolio that does not sacrifice IC vs the equal-weight baseline.
+    """
+    mu, Sigma, names = _align(ic_dict)
+    n = len(names)
+
+    if n == 1:
+        return _make_result("Min Tracking Error", np.array([1.0]), mu, Sigma, names)
+
+    w_bm = _equal_w(names)
+    bm_ic = float(mu @ w_bm)
+
+    def te_sq(w: np.ndarray) -> float:
+        diff = w - w_bm
+        return float(diff @ Sigma @ diff)
+
+    constraints = [
+        {"type": "eq",   "fun": lambda w: w.sum() - 1.0},
+        {"type": "ineq", "fun": lambda w: float(mu @ w) - bm_ic},
+    ]
+    bounds = [(0.0, 1.0)] * n
+
+    res = minimize(
+        te_sq, w_bm, method="SLSQP",
+        bounds=bounds, constraints=constraints,
+        options={"ftol": 1e-10, "maxiter": 500},
+    )
+    if not res.success:
+        return equal_weight(ic_dict)
+
+    w = np.maximum(res.x, 0.0)
+    w /= w.sum() if w.sum() > 1e-12 else 1.0
+    return _make_result("Min Tracking Error", w, mu, Sigma, names)
+
+
+def max_active_ir(ic_dict: dict[str, pd.Series]) -> OptimizeResult:
+    """Maximise active Information Ratio vs equal-weight benchmark.
+
+    Active IR = (w − w_eq)'μ / √((w − w_eq)'Σ(w − w_eq))
+    Analogous to maximising the Sharpe of the *active* (benchmark-relative) IC.
+    """
+    mu, Sigma, names = _align(ic_dict)
+    n = len(names)
+
+    if n == 1:
+        return _make_result("Max Active IR", np.array([1.0]), mu, Sigma, names)
+
+    w_bm = _equal_w(names)
+
+    def neg_active_ir(w: np.ndarray) -> float:
+        active = w - w_bm
+        excess_ic = float(mu @ active)
+        te_sq = float(active @ Sigma @ active)
+        if te_sq <= 1e-24:
+            return 0.0
+        return -excess_ic / np.sqrt(te_sq)
+
+    constraints = [{"type": "eq", "fun": lambda w: w.sum() - 1.0}]
+    bounds = [(0.0, 1.0)] * n
+    best_result, best_val = None, np.inf
+
+    for seed_w in [_equal_w(names)] + [np.eye(n)[i] for i in range(n)]:
+        res = minimize(
+            neg_active_ir, seed_w, method="SLSQP",
+            bounds=bounds, constraints=constraints,
+            options={"ftol": 1e-10, "maxiter": 1000},
+        )
+        if res.success and res.fun < best_val:
+            best_val = res.fun
+            best_result = res
+
+    if best_result is None or not best_result.success:
+        return equal_weight(ic_dict)
+
+    w = np.maximum(best_result.x, 0.0)
+    w /= w.sum() if w.sum() > 1e-12 else 1.0
+    return _make_result("Max Active IR", w, mu, Sigma, names)
+
+
+def max_diversification(ic_dict: dict[str, pd.Series]) -> OptimizeResult:
+    """Maximise the diversification ratio: Σ(w_i · σ_i) / √(w'Σw).
+
+    σ_i = marginal IC volatility of factor i (sqrt of diagonal of Σ).
+    Higher ratio means factor IC volatilities are less correlated — rewards combining
+    factors whose IC series move independently.
+    """
+    mu, Sigma, names = _align(ic_dict)
+    n = len(names)
+
+    if n == 1:
+        return _make_result("Max Diversification", np.array([1.0]), mu, Sigma, names)
+
+    sigma_i = np.sqrt(np.diag(Sigma))
+
+    def neg_dr(w: np.ndarray) -> float:
+        weighted_vol = float(sigma_i @ w)
+        port_var = float(w @ Sigma @ w)
+        if port_var <= 1e-24:
+            return 0.0
+        return -weighted_vol / np.sqrt(port_var)
+
+    constraints = [{"type": "eq", "fun": lambda w: w.sum() - 1.0}]
+    bounds = [(0.0, 1.0)] * n
+    best_result, best_val = None, np.inf
+
+    for seed_w in [_equal_w(names)] + [np.eye(n)[i] for i in range(n)]:
+        res = minimize(
+            neg_dr, seed_w, method="SLSQP",
+            bounds=bounds, constraints=constraints,
+            options={"ftol": 1e-10, "maxiter": 1000},
+        )
+        if res.success and res.fun < best_val:
+            best_val = res.fun
+            best_result = res
+
+    if best_result is None or not best_result.success:
+        return equal_weight(ic_dict)
+
+    w = np.maximum(best_result.x, 0.0)
+    w /= w.sum() if w.sum() > 1e-12 else 1.0
+    return _make_result("Max Diversification", w, mu, Sigma, names)
+
+
 def run_all(ic_dict: dict[str, pd.Series], risk_aversion: float = 1.0) -> list[OptimizeResult]:
     """Run all optimisers and return their results."""
     results = []
-    for fn in [equal_weight, ic_proportional, icir_proportional, max_icir, min_variance, risk_parity]:
+    for fn in [
+        equal_weight,
+        max_expected_return,
+        ic_proportional,
+        icir_proportional,
+        max_icir,
+        max_active_ir,
+        min_variance,
+        min_tracking_error,
+        risk_parity,
+        max_diversification,
+    ]:
         try:
             results.append(fn(ic_dict))
         except Exception:

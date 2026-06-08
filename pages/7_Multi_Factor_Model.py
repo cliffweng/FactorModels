@@ -606,20 +606,57 @@ with tab_optimizer:
         # Objective selector
         # ---------------------
         _OBJ_META = {
-            "Max Sharpe": {
+            "Max Sharpe (ICIR)": {
                 "method_prefix": "Max ICIR",
                 "desc": "Maximises ICIR = mean IC ÷ IC std — the tangency portfolio in IC space, "
                         "analogous to Sharpe-ratio optimisation in return space.",
+            },
+            "Max Active IR": {
+                "method_prefix": "Max Active IR",
+                "desc": "Maximises active IR = (w − w_eq)'μ / TE — the Sharpe of the *active* IC signal "
+                        "relative to the equal-weight benchmark. Rewards factors that outperform the benchmark "
+                        "most efficiently.",
+            },
+            "Max Expected Return": {
+                "method_prefix": "Max Expected Return",
+                "desc": "Concentrates all weight on the factor with the highest mean IC — "
+                        "pure expected-return maximisation, ignoring variance.",
             },
             "Mean-Variance": {
                 "method_prefix": "Mean-Variance",
                 "desc": "Maximises mean IC − λ · IC variance. "
                         "Low λ favours high IC; high λ penalises IC volatility.",
             },
+            "Min Total Variance": {
+                "method_prefix": "Min Variance",
+                "desc": "Minimises total IC variance w'Σw — the global minimum-variance portfolio "
+                        "in IC space. Ignores expected IC, focuses purely on stability.",
+            },
+            "Min Tracking Error": {
+                "method_prefix": "Min Tracking Error",
+                "desc": "Minimises IC tracking error vs equal-weight benchmark while requiring "
+                        "mean IC ≥ equal-weight IC. Produces the tightest-tracking portfolio "
+                        "that does not sacrifice IC quality.",
+            },
+            "Max Diversification": {
+                "method_prefix": "Max Diversification",
+                "desc": "Maximises the diversification ratio Σ(w_i·σ_i) / σ_p — rewards combining "
+                        "factors whose IC series are independent. Prefers uncorrelated factor pairs.",
+            },
             "Risk Parity": {
                 "method_prefix": "Risk Parity",
                 "desc": "Allocates weights so every factor contributes equally to portfolio IC variance — "
                         "diversified by risk contribution rather than by capital.",
+            },
+            "IC-Proportional": {
+                "method_prefix": "IC-Proportional",
+                "desc": "Weights proportional to each factor's mean IC (negative mean IC → zero weight). "
+                        "Simple, transparent, and requires no covariance estimation.",
+            },
+            "ICIR-Proportional": {
+                "method_prefix": "ICIR-Proportional",
+                "desc": "Weights proportional to each factor's individual ICIR = mean IC ÷ IC std. "
+                        "Favours factors with high risk-adjusted signal strength.",
             },
             "Equal Weight": {
                 "method_prefix": "Equal Weight",
@@ -627,15 +664,10 @@ with tab_optimizer:
             },
         }
 
-        sel_col, desc_col = st.columns([1, 2])
-        with sel_col:
-            selected_objective = st.selectbox(
-                "Optimization Objective",
-                list(_OBJ_META.keys()),
-                key="opt_objective",
-            )
-        with desc_col:
-            st.caption(_OBJ_META[selected_objective]["desc"])
+        # Read current objective from session state; the actual selectbox renders
+        # further down (after the frontier chart). This early read drives the
+        # risk-aversion slider and cache-key before any results are shown.
+        selected_objective = st.session_state.get("opt_objective", list(_OBJ_META.keys())[0])
 
         risk_aversion = 1.0
         if selected_objective == "Mean-Variance":
@@ -744,14 +776,9 @@ with tab_optimizer:
                 st.plotly_chart(fig_frontier, use_container_width=True)
 
                 # ---------------------
-                # Sensitivity / tornado (for selected method)
+                # 2-col grid: left = objective selector + apply, right = sensitivity
                 # ---------------------
                 st.markdown("---")
-                st.subheader("Weight Sensitivity")
-                st.caption(
-                    f"How much does composite ICIR change when each factor's weight is nudged +10%? "
-                    f"(base: **{selected_objective}** weights)"
-                )
 
                 @st.cache_data(ttl=3600)
                 def compute_sensitivity(_ic_dict, base_weights_dict, nudge=0.10):
@@ -769,25 +796,45 @@ with tab_optimizer:
                         deltas[name] = new_icir - base_icir_val
                     return base_icir_val, deltas
 
-                base_icir_val, sensitivity = compute_sensitivity(
-                    ic_dict_for_opt, selected_result.weights
-                )
-                sensitivity_labelled = {active_labels.get(n, n): v for n, v in sensitivity.items()}
-                fig_sens = plot_sensitivity(base_icir_val, sensitivity_labelled)
-                st.plotly_chart(fig_sens, use_container_width=True)
+                left_col, right_col = st.columns([1, 2])
 
-                # ---------------------
-                # Apply selected method's weights → Model Builder
-                # ---------------------
-                st.markdown("---")
-                if st.button(f"Apply '{selected_objective}' weights to Model Builder"):
-                    pending = {}
-                    for name, w in selected_result.weights.items():
-                        pending[name] = min(w * len(active_names), 2.0)
-                    st.session_state["pending_weights"] = pending
-                    st.rerun()
+                with left_col:
+                    st.subheader("Optimization Objective")
+                    selected_objective = st.selectbox(
+                        "Objective",
+                        list(_OBJ_META.keys()),
+                        key="opt_objective",
+                        label_visibility="collapsed",
+                    )
+                    st.caption(_OBJ_META[selected_objective]["desc"])
+
+                    # Re-resolve selected_result for the chosen objective
+                    _prefix = _OBJ_META[selected_objective]["method_prefix"]
+                    selected_result = next(
+                        (r for r in opt_results if r.method.startswith(_prefix)),
+                        opt_results[0],
+                    )
+
+                    st.write("")
+                    if st.button("Apply to Model Builder", type="primary"):
+                        pending = {name: min(w * len(active_names), 2.0) for name, w in selected_result.weights.items()}
+                        st.session_state["pending_weights"] = pending
+                        st.rerun()
+
+                with right_col:
+                    st.subheader("Weight Sensitivity")
+                    st.caption(
+                        f"ICIR change when each factor's weight is nudged +10% "
+                        f"(base: **{selected_objective}**)"
+                    )
+                    base_icir_val, sensitivity = compute_sensitivity(
+                        ic_dict_for_opt, selected_result.weights
+                    )
+                    sensitivity_labelled = {active_labels.get(n, n): v for n, v in sensitivity.items()}
+                    fig_sens = plot_sensitivity(base_icir_val, sensitivity_labelled)
+                    st.plotly_chart(fig_sens, use_container_width=True)
         else:
-            st.info("Select an objective above and click **Run Optimizers**.")
+            st.info("Click **Run Optimizers** to compute all optimisation methods.")
 
 # ===========================================================================
 # TAB 5 — STRATEGIES

@@ -17,7 +17,6 @@ TICKER_SECTOR = get_ticker_sector()
 from src.viz.theme import apply_dark, SECTOR_COLORS
 from src.viz.factor_charts import plot_universe_correlation
 
-st.set_page_config(page_title="Universe Explorer", page_icon="🌐", layout="wide")
 st.title("Universe Explorer")
 st.caption("Explore the investment universe: sector composition, return history, and correlations")
 

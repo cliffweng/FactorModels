@@ -19,7 +19,6 @@ from src.factors.base import get_registry
 from src.viz.factor_charts import plot_correlation_matrix
 from src.viz.theme import apply_dark, SECTOR_COLORS
 
-st.set_page_config(page_title="Factor Correlation", page_icon="🔗", layout="wide")
 st.title("Factor Correlation")
 st.caption("How diversified is the factor library? Identify factor clusters and redundancies.")
 

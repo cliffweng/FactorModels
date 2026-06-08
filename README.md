@@ -11,7 +11,7 @@ python -m venv .venv
 .venv/Scripts/pip install -r requirements.txt   # Windows
 # or: .venv/bin/pip install -r requirements.txt  # macOS/Linux
 
-.venv/Scripts/streamlit run app.py
+.venv/Scripts/streamlit run Main.py
 ```
 
 Data is fetched from [yfinance](https://github.com/ranaroussi/yfinance) on first load and cached to `.cache/` as pickle files. Subsequent page loads are instant.
@@ -32,7 +32,7 @@ Each stage corresponds to a page in the app.
 
 ## Pages
 
-### Home (`app.py`)
+### Home (`Main.py`)
 Landing page. Shows the full factor registry (all registered factors with their category, direction, and whether they support time-series analysis), a methodology reference, and cache status in the sidebar with a one-click clear button.
 
 ### 1 — Universe Explorer
@@ -97,7 +97,7 @@ High correlation (|ρ| > 0.7) flags redundancy; low correlation signals genuine 
 
 ```
 FactorModels/
-├── app.py                        # Home page; triggers factor registration on import
+├── Main.py                        # Home page; triggers factor registration on import
 ├── pages/
 │   ├── 1_Universe_Explorer.py
 │   ├── 2_Factor_Lab.py

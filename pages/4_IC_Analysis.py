@@ -21,7 +21,6 @@ from src.viz.ic_charts import (
     plot_ic_bar, plot_ic_distribution, plot_ic_decay, plot_cumulative_ic
 )
 
-st.set_page_config(page_title="IC Analysis", page_icon="📈", layout="wide")
 st.title("IC Analysis")
 st.caption("Information Coefficient: how well does the factor rank tomorrow's winners?")
 

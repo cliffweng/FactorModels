@@ -20,7 +20,6 @@ from src.viz.portfolio_charts import (
     plot_quintile_fans, plot_cumulative_ls, plot_drawdown, plot_annual_returns
 )
 
-st.set_page_config(page_title="Backtest", page_icon="💰", layout="wide")
 st.title("Factor Backtest")
 st.caption("Quintile portfolios and long-short performance across time")
 

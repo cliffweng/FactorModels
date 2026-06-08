@@ -19,7 +19,6 @@ from src.factors.base import get_registry
 from src.analysis.ic import compute_forward_returns
 from src.viz.factor_charts import plot_factor_bar, plot_factor_scatter, plot_factor_distribution
 
-st.set_page_config(page_title="Factor Lab", page_icon="🔬", layout="wide")
 st.title("Factor Lab")
 st.caption("Compute and explore cross-sectional factor scores for the current snapshot")
 

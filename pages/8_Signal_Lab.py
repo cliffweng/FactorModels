@@ -36,7 +36,6 @@ from src.viz.signal_charts import (
 )
 from src.viz.theme import SECTOR_COLORS
 
-st.set_page_config(page_title="Signal Lab", page_icon="🔬", layout="wide")
 st.title("Signal Lab")
 st.caption(
     "Run any factor or saved strategy against the full basket or drill into a single ticker."

@@ -7,7 +7,6 @@ import streamlit as st
 import src.factors  # noqa: register factors
 from src.factors.base import get_registry
 
-st.set_page_config(page_title="Factor Library", page_icon="📚", layout="wide")
 st.title("Factor Library")
 st.caption("Enable or disable factors. Active factors appear in IC Analysis, Backtest, Factor Correlation, Multi-Factor Model, and Signal Lab.")
 

@@ -36,7 +36,6 @@ from src.viz.multi_factor_charts import (
 from src.viz.ic_charts import plot_ic_decay, plot_ic_bar
 from src.viz.theme import apply_dark
 
-st.set_page_config(page_title="Multi-Factor Model", page_icon="🧬", layout="wide")
 st.title("Multi-Factor Model")
 st.caption("Combine multiple factors into a composite signal, evaluate IC, and optimise weights")
 

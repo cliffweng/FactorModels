@@ -5,6 +5,13 @@ from src.factors.quality import ROEFactor, GrossMarginFactor
 from src.factors.tutorial import (
     SMACross, UpDayRatio, RollingSharpe, ReturnSkewness, ShortTermZScore,
 )
+from src.factors.technical import (
+    RSI14, MACDHistogram, BollingerPctB, CCI20, PriceAcceleration,
+    TrendConsistency, CalmarRatio, NormalizedATR, MaxDrawdown252, IdiosyncraticVol,
+)
+from src.factors.short_interest import (
+    ShortInterestRatio, ShortPercentFloat, ShortInterestChange,
+)
 
 from src.factors.base import get_registry, list_factors, get_factor
 
@@ -14,5 +21,8 @@ __all__ = [
     "FiftyTwoWeekHighRatio", "PriceToBook", "PriceToEarnings",
     "ROEFactor", "GrossMarginFactor",
     "SMACross", "UpDayRatio", "RollingSharpe", "ReturnSkewness", "ShortTermZScore",
+    "RSI14", "MACDHistogram", "BollingerPctB", "CCI20", "PriceAcceleration",
+    "TrendConsistency", "CalmarRatio", "NormalizedATR", "MaxDrawdown252", "IdiosyncraticVol",
+    "ShortInterestRatio", "ShortPercentFloat", "ShortInterestChange",
     "get_registry", "list_factors", "get_factor",
 ]

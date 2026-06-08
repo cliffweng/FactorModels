@@ -46,8 +46,15 @@ st.caption(
 # Registry
 # ---------------------------------------------------------------------------
 registry = get_registry()
-price_factors = {name: f for name, f in registry.items() if not f.requires_fundamentals}
-all_factors   = {name: f for name, f in registry.items()}
+_active = st.session_state.get("active_factors")
+price_factors = {
+    name: f for name, f in registry.items()
+    if not f.requires_fundamentals and (_active is None or name in _active)
+}
+all_factors = {
+    name: f for name, f in registry.items()
+    if _active is None or name in _active
+}
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -59,6 +66,9 @@ with st.sidebar:
 
     if signal_type == "Factor":
         factor_label_map = {f.label: n for n, f in all_factors.items()}
+        if not factor_label_map:
+            st.warning("No active factors. Go to **Factor Lab** to enable some.")
+            st.stop()
         chosen_label = st.selectbox(
             "Factor",
             options=list(factor_label_map.keys()),

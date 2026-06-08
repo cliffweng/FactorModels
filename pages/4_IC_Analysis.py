@@ -29,11 +29,18 @@ st.caption("Information Coefficient: how well does the factor rank tomorrow's wi
 # Sidebar
 # ---------------------------------------------------------------------------
 registry = get_registry()
-# Only price-based factors support panel / time-series IC
-price_factors = {f.label: name for name, f in registry.items() if not f.requires_fundamentals}
+_active = st.session_state.get("active_factors")
+# Only price-based factors that are active support panel / time-series IC
+price_factors = {
+    f.label: name for name, f in registry.items()
+    if not f.requires_fundamentals and (_active is None or name in _active)
+}
 
 with st.sidebar:
     st.header("IC Settings")
+    if not price_factors:
+        st.warning("No active price-based factors. Go to **Factor Lab** to enable some.")
+        st.stop()
     selected_label = st.selectbox("Factor", list(price_factors.keys()))
     factor_name = price_factors[selected_label]
     factor = registry[factor_name]

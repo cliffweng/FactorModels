@@ -19,7 +19,12 @@
       "Bash(Get-ChildItem -Recurse \"C:/dev/finance/FactorModels/src/analysis/__pycache__\" -Filter \"optimizer*.pyc\")",
       "Bash(Remove-Item -Force)",
       "Bash(Write-Host \"cleared\")",
-      "Bash(Remove-Item src/data/fmp.py)"
+      "Bash(Remove-Item src/data/fmp.py)",
+      "Bash(.venv\\\\Scripts\\\\python.exe *)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m pytest tests/ -v --tb=short -q 2>&1 | Select-Object -Last 20)",
+      "PowerShell(tail *)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m pytest tests/ -q 2>&1 | Select-Object -Last 5)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m pytest tests/ -q 2>&1 | Select-Object -Last 3)"
     ]
   }
 }

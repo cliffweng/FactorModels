@@ -27,15 +27,23 @@ st.caption("How diversified is the factor library? Identify factor clusters and 
 # Sidebar
 # ---------------------------------------------------------------------------
 registry = get_registry()
-all_factors = list(registry.items())
-price_factors_names = [n for n, f in all_factors if not f.requires_fundamentals]
+_active = st.session_state.get("active_factors")
+all_factors = [
+    (n, f) for n, f in registry.items()
+    if not f.requires_fundamentals and (_active is None or n in _active)
+]
+price_factors_names = [n for n, f in all_factors]
 
 with st.sidebar:
     st.header("Settings")
+    if not all_factors:
+        st.warning("No active price-based factors. Go to **Factor Lab** to enable some.")
+        st.stop()
+    _active_labels = [f.label for _, f in all_factors]
     selected_factor_names = st.multiselect(
         "Factors to include",
-        options=[f.label for _, f in all_factors if not f.requires_fundamentals],
-        default=[f.label for _, f in all_factors if not f.requires_fundamentals],
+        options=_active_labels,
+        default=_active_labels,
     )
     lookback_years = st.slider("Price History (years)", 1, 5, 3)
     force_refresh = st.button("Refresh Data")

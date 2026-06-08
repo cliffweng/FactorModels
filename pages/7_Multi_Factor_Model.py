@@ -44,10 +44,17 @@ st.caption("Combine multiple factors into a composite signal, evaluate IC, and o
 # Registry
 # ---------------------------------------------------------------------------
 registry = get_registry()
-# All registered factors (for multiselect)
-all_factor_labels   = {f.label: name for name, f in registry.items()}
-# Price-based only (used for defaults)
-price_factor_labels = {f.label: name for name, f in registry.items() if not f.requires_fundamentals}
+_active = st.session_state.get("active_factors")
+# Filter to active factors only (default: all)
+all_factor_labels   = {
+    f.label: name for name, f in registry.items()
+    if _active is None or name in _active
+}
+# Price-based active factors (used for defaults)
+price_factor_labels = {
+    f.label: name for name, f in registry.items()
+    if not f.requires_fundamentals and (_active is None or name in _active)
+}
 
 # ---------------------------------------------------------------------------
 # Apply pending factor selection from Strategies tab BEFORE sidebar renders
@@ -61,11 +68,16 @@ if "pending_sidebar_factors" in st.session_state:
 with st.sidebar:
     st.header("Model Settings")
 
+    if not all_factor_labels:
+        st.warning("No active factors. Go to **Factor Lab** to enable some.")
+        st.stop()
+
+    _default_labels = list(price_factor_labels.keys())[:3] if price_factor_labels else list(all_factor_labels.keys())[:2]
     selected_labels = st.multiselect(
         "Factors",
         options=sorted(all_factor_labels.keys()),
-        default=list(price_factor_labels.keys())[:3],
-        help="All 10 factors available. Fundamental factors (P/B, ROE, etc.) appear in cross-section scores but are excluded from IC / Backtest / Optimizer.",
+        default=_default_labels,
+        help="Only active factors shown. Enable more in Factor Lab. Fundamental factors (P/B, ROE, etc.) appear in cross-section scores but are excluded from IC / Backtest / Optimizer.",
         key="sel_factors",
     )
 
@@ -395,6 +407,8 @@ with tab_builder:
             else:
                 st.warning("Enter a name before saving.")
 
+w_tuple = tuple(raw_weights)
+
 # ===========================================================================
 # TAB 2 — IC ANALYSIS
 # ===========================================================================
@@ -424,7 +438,6 @@ with tab_ic:
             return panel, ic_s
 
         # Use all selected names — CompositeModel.compute_panel() skips fundamental factors internally
-        w_tuple = tuple(raw_weights)
         composite_panel, composite_ic = get_composite_panel_and_ic(
             tuple(all_selected_names), w_tuple, start_date, end_date,
             rebal_freq, ic_horizon, prices_stocks, _edgar_panel=edgar_panel,

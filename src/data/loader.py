@@ -145,6 +145,9 @@ def get_fundamentals(tickers: tuple[str, ...]) -> pd.DataFrame:
                     "peg": info.get("pegRatio"),
                     "dividend_yield": info.get("dividendYield"),
                     "short_ratio": info.get("shortRatio"),
+                    "short_pct_float": info.get("shortPercentOfFloat"),
+                    "shares_short": info.get("sharesShort"),
+                    "shares_short_prior": info.get("sharesShortPriorMonth"),
                 }
             )
         except Exception as e:
